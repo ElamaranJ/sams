@@ -1,21 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-  GraduationCap, Bell, Search, User, Settings, LogOut, ChevronRight, Plus
-} from 'lucide-react';
+import { Search, Bell, ChevronRight, LogOut, User, Settings } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import Button from '../ui/Button';
 
 const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const [showProfile, setShowProfile] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const navigate = useNavigate();
-
-  const handleLogout = () => {
-    logout();
-    navigate('/');
-  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-lg border-b-2 border-slate-100">
@@ -41,22 +34,18 @@ const Navbar = () => {
         </Link>
 
         <div className="hidden md:flex items-center gap-8">
-          {!isAuthenticated && (
-            <>
-              <Link to="/" className="text-slate-700 hover:text-slate-900 font-semibold transition-colors">
-                Home
-              </Link>
-              <button className="text-slate-700 hover:text-slate-900 font-semibold transition-colors">
-                Features
-              </button>
-              <button className="text-slate-700 hover:text-slate-900 font-semibold transition-colors">
-                About
-              </button>
-              <button className="text-slate-700 hover:text-slate-900 font-semibold transition-colors">
-                Contact
-              </button>
-            </>
-          )}
+          <button className="text-slate-700 hover:text-slate-900 font-semibold transition-colors">
+            Online Degrees
+          </button>
+          <button className="text-slate-700 hover:text-slate-900 font-semibold transition-colors">
+            Find your New Career
+          </button>
+          <button className="text-slate-700 hover:text-slate-900 font-semibold transition-colors">
+            Blog
+          </button>
+          <button className="text-slate-700 hover:text-slate-900 font-semibold transition-colors">
+            Contact
+          </button>
         </div>
 
         <div className="flex items-center gap-3">
@@ -65,19 +54,10 @@ const Navbar = () => {
               <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors">
                 <Search size={20} className="text-slate-700" />
               </button>
-              
-              <button 
-                className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors relative"
-                onClick={() => setShowNotifications(!showNotifications)}
-              >
+              <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors relative">
                 <Bell size={20} className="text-slate-700" />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
               </button>
-
-              <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors">
-                <Plus size={20} className="text-slate-700" />
-              </button>
-
               <div className="relative">
                 <button
                   onClick={() => setShowProfile(!showProfile)}
@@ -101,24 +81,20 @@ const Navbar = () => {
                       <p className="text-xs text-blue-600 mt-1 font-semibold capitalize">{user?.role}</p>
                     </div>
                     
-                    <Link 
-                      to="/profile"
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-3 transition-colors"
-                      onClick={() => setShowProfile(false)}
-                    >
+                    <button className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-3 transition-colors">
                       <User size={18} /> Profile
-                    </Link>
+                    </button>
                     
-                    <Link 
-                      to="/settings"
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-3 transition-colors"
-                      onClick={() => setShowProfile(false)}
-                    >
+                    <button className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-3 transition-colors">
                       <Settings size={18} /> Settings
-                    </Link>
+                    </button>
                     
                     <button 
-                      onClick={handleLogout}
+                      onClick={() => {
+                        logout();
+                        navigate('/');
+                        setShowProfile(false);
+                      }}
                       className="w-full text-left px-4 py-3 hover:bg-red-50 text-red-600 font-medium flex items-center gap-3 transition-colors border-t-2 border-slate-100"
                     >
                       <LogOut size={18} /> Sign out
@@ -129,46 +105,16 @@ const Navbar = () => {
             </>
           ) : (
             <>
-              <Link 
-                to="/login"
-                className="px-4 py-2 hover:bg-slate-100 text-slate-700 font-semibold rounded-xl transition-colors"
-              >
-                Login
+              <Link to="/login">
+                <Button variant="ghost" size="sm">Login</Button>
               </Link>
-              <Link 
-                to="/register"
-                className="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-xl shadow-lg transition-colors"
-              >
-                Sign Up
+              <Link to="/register">
+                <Button variant="primary" size="sm">Sign Up</Button>
               </Link>
             </>
           )}
         </div>
       </div>
-
-      {showNotifications && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="absolute right-6 top-full mt-2 w-96 bg-white rounded-xl border-2 border-slate-100 shadow-xl"
-        >
-          <div className="p-4 border-b-2 border-slate-100">
-            <h3 className="font-bold text-slate-900">Notifications</h3>
-          </div>
-          <div className="max-h-96 overflow-y-auto p-2">
-            <div className="p-4 hover:bg-slate-50 rounded-lg transition-colors">
-              <p className="text-sm font-semibold text-slate-900">New Assignment Posted</p>
-              <p className="text-sm text-slate-600 mt-1">Computer Science 101 - Due Feb 5</p>
-              <p className="text-xs text-slate-400 mt-1">2 hours ago</p>
-            </div>
-            <div className="p-4 hover:bg-slate-50 rounded-lg transition-colors">
-              <p className="text-sm font-semibold text-slate-900">Attendance Marked</p>
-              <p className="text-sm text-slate-600 mt-1">Your attendance for today's lecture has been recorded</p>
-              <p className="text-xs text-slate-400 mt-1">5 hours ago</p>
-            </div>
-          </div>
-        </motion.div>
-      )}
     </nav>
   );
 };

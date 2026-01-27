@@ -1,118 +1,15 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { 
-  BookOpen, Users, Clock, Star, Award, ArrowRight, Plus,
-  PlayCircle, Code, Target, Briefcase, Palette, Settings,
-  FileText, GraduationCap
+  BookOpen, Users, Clock, Star, Award, ArrowRight, 
+  FileText, PlayCircle, Plus
 } from 'lucide-react';
+import Button from '../components/ui/Button';
+import Card from '../components/shared/GlassCard';
+import { dummyData } from '../utils/dummyData';
 
-const dummyData = {
-  categories: [
-    { id: 1, name: 'Computer Science', icon: Code, color: 'bg-blue-500', courses: 120 },
-    { id: 2, name: 'Mathematics', icon: Target, color: 'bg-purple-500', courses: 85 },
-    { id: 3, name: 'Business', icon: Briefcase, color: 'bg-green-500', courses: 95 },
-    { id: 4, name: 'Design', icon: Palette, color: 'bg-orange-500', courses: 70 },
-    { id: 5, name: 'Engineering', icon: Settings, color: 'bg-red-500', courses: 110 },
-  ],
-  featuredCourses: [
-    { 
-      id: 1, 
-      title: 'Advanced Data Structures', 
-      instructor: 'Dr. Sarah Miller',
-      students: 45,
-      rating: 4.8,
-      price: 'Free',
-      duration: '12 weeks',
-      level: 'Advanced',
-      image: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-    },
-    { 
-      id: 2, 
-      title: 'Machine Learning Fundamentals', 
-      instructor: 'Prof. John Davis',
-      students: 38,
-      rating: 4.9,
-      price: 'Free',
-      duration: '10 weeks',
-      level: 'Intermediate',
-      image: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
-    },
-    { 
-      id: 3, 
-      title: 'Web Development Bootcamp', 
-      instructor: 'Ms. Emily Chen',
-      students: 62,
-      rating: 4.7,
-      price: 'Free',
-      duration: '16 weeks',
-      level: 'Beginner',
-      image: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'
-    },
-  ],
-};
-
-const Button = ({ children, variant = 'primary', onClick, className = '', icon: Icon, size = 'md', fullWidth = false, to }) => {
-  const variants = {
-    primary: 'bg-slate-800 hover:bg-slate-900 text-white shadow-lg shadow-slate-800/30',
-    secondary: 'bg-white hover:bg-gray-50 text-slate-800 border-2 border-slate-200',
-    accent: 'bg-amber-400 hover:bg-amber-500 text-slate-900 shadow-lg shadow-amber-400/30',
-    ghost: 'hover:bg-slate-100 text-slate-700',
-  };
-
-  const sizes = {
-    sm: 'px-4 py-2 text-sm',
-    md: 'px-6 py-3 text-base',
-    lg: 'px-8 py-4 text-lg',
-  };
-
-  const buttonContent = (
-    <>
-      {Icon && <Icon size={20} />}
-      {children}
-    </>
-  );
-
-  const buttonClass = `rounded-xl font-semibold flex items-center justify-center gap-2 transition-all ${variants[variant]} ${sizes[size]} ${fullWidth ? 'w-full' : ''} ${className}`;
-
-  if (to) {
-    return (
-      <Link to={to}>
-        <motion.button
-          whileHover={{ scale: 1.02, y: -2 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={onClick}
-          className={buttonClass}
-        >
-          {buttonContent}
-        </motion.button>
-      </Link>
-    );
-  }
-
-  return (
-    <motion.button
-      whileHover={{ scale: 1.02, y: -2 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={onClick}
-      className={buttonClass}
-    >
-      {buttonContent}
-    </motion.button>
-  );
-};
-
-const Card = ({ children, className = '', hover = false, delay = 0 }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.5, delay }}
-    className={`bg-white rounded-2xl border-2 border-slate-100 ${hover ? 'hover:shadow-xl hover:border-slate-200 transition-all duration-300 cursor-pointer' : ''} ${className}`}
-  >
-    {children}
-  </motion.div>
-);
-
+// ============= HERO SECTION =============
 const HeroSection = () => {
   return (
     <div className="relative min-h-[600px] bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 overflow-hidden">
@@ -143,12 +40,16 @@ const HeroSection = () => {
             </p>
             
             <div className="flex items-center gap-4 mb-12">
-              <Button variant="primary" size="lg" to="/login">
-                Explore classes
-              </Button>
-              <Button variant="secondary" size="lg" icon={Plus} to="/register">
-                Create Account
-              </Button>
+              <Link to="/login">
+                <Button variant="primary" size="lg">
+                  Explore classes
+                </Button>
+              </Link>
+              <Link to="/register">
+                <Button variant="secondary" size="lg" icon={Plus}>
+                  Create Account
+                </Button>
+              </Link>
             </div>
 
             <div className="flex items-center gap-8">
@@ -208,6 +109,7 @@ const HeroSection = () => {
   );
 };
 
+// ============= TRUSTED UNIVERSITIES =============
 const TrustedSection = () => {
   return (
     <div className="py-16 bg-white border-y-2 border-slate-100">
@@ -234,6 +136,7 @@ const TrustedSection = () => {
   );
 };
 
+// ============= CATEGORIES SECTION =============
 const CategoriesSection = () => {
   return (
     <div className="py-20 bg-gradient-to-b from-white to-slate-50">
@@ -265,6 +168,7 @@ const CategoriesSection = () => {
   );
 };
 
+// ============= FEATURED COURSES =============
 const FeaturedCoursesSection = () => {
   return (
     <div className="py-20 bg-slate-50">
@@ -319,6 +223,7 @@ const FeaturedCoursesSection = () => {
   );
 };
 
+// ============= INFO SECTION =============
 const InfoSection = () => {
   return (
     <div className="py-20 bg-white">
@@ -368,6 +273,7 @@ const InfoSection = () => {
   );
 };
 
+// ============= VIDEO SECTION =============
 const VideoSection = () => {
   return (
     <div className="py-20 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
@@ -405,20 +311,16 @@ const VideoSection = () => {
   );
 };
 
+// ============= LANDING PAGE =============
 const Landing = () => {
   return (
     <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&display=swap');
-      `}</style>
-      <div className="min-h-screen bg-white">
-        <HeroSection />
-        <TrustedSection />
-        <CategoriesSection />
-        <FeaturedCoursesSection />
-        <InfoSection />
-        <VideoSection />
-      </div>
+      <HeroSection />
+      <TrustedSection />
+      <CategoriesSection />
+      <FeaturedCoursesSection />
+      <InfoSection />
+      <VideoSection />
     </>
   );
 };
