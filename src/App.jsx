@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { motion } from 'framer-motion';
 import {
   Home, BookOpen, Calendar, FileText, Award, QrCode,
-  Users, BarChart3, Settings
+  Users, BarChart3, Settings, Edit, Plus
 } from 'lucide-react';
 
 // Import AuthContext from the separate file
@@ -12,10 +12,15 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 // Import your pages
 import Landing from './pages/Landing';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import StudentDashboard from './pages/StudentDashboard';
 import FacultyDashboard from './pages/FacultyDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 import AssignmentUpload from './pages/AssignmentUpload';
+import AssignmentEvaluation from './pages/AssignmentEvaluation';
+import AssignmentCreate from './pages/AssignmentCreate';
 import Attendance from './pages/Attendance';
+import AttendanceGenerate from './pages/AttendanceGenerate';
 
 // Import shared components
 import Navbar from './components/layout/Navbar';
@@ -24,6 +29,17 @@ import Navbar from './components/layout/Navbar';
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? children : <Navigate to="/login" replace />;
+};
+
+// Public Route Component (redirect if already authenticated)
+const PublicRoute = ({ children }) => {
+  const { isAuthenticated, user } = useAuth();
+  
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return children;
 };
 
 // Dashboard Layout Component
@@ -45,8 +61,9 @@ const DashboardLayout = () => {
       { icon: Home, label: 'Dashboard', page: 'home' },
       { icon: BookOpen, label: 'My Classes', page: 'classes' },
       { icon: Users, label: 'Students', page: 'students' },
-      { icon: FileText, label: 'Assignments', page: 'assignments' },
-      { icon: QrCode, label: 'Attendance', page: 'attendance' },
+      { icon: Plus, label: 'Create Assignment', page: 'create-assignment' },
+      { icon: Edit, label: 'Evaluate', page: 'evaluate' },
+      { icon: QrCode, label: 'Generate QR', page: 'generate-qr' },
       { icon: BarChart3, label: 'Analytics', page: 'reports' },
     ],
     admin: [
@@ -69,12 +86,7 @@ const DashboardLayout = () => {
       case 'student':
         return <StudentDashboard />;
       case 'admin':
-        return (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold text-slate-900">Admin Dashboard</h2>
-            <p className="text-slate-600 mt-2">Admin dashboard coming soon...</p>
-          </div>
-        );
+        return <AdminDashboard />;
       default:
         return <StudentDashboard />;
     }
@@ -128,6 +140,21 @@ const DashboardLayout = () => {
                     <span className="text-sm font-bold text-green-600">89%</span>
                   </div>
                 </>
+              ) : user?.role === 'admin' ? (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Total Users</span>
+                    <span className="text-sm font-bold text-slate-900">1,245</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">Active Courses</span>
+                    <span className="text-sm font-bold text-blue-600">48</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-600">System Health</span>
+                    <span className="text-sm font-bold text-green-600">98%</span>
+                  </div>
+                </>
               ) : (
                 <>
                   <div className="flex justify-between items-center">
@@ -152,8 +179,17 @@ const DashboardLayout = () => {
       {/* Main Content Area */}
       <div className="ml-64 pt-16">
         {activePage === 'home' && renderHomePage()}
-        {activePage === 'assignments' && <AssignmentUpload />}
-        {activePage === 'attendance' && <Attendance />}
+        
+        {/* Student Pages */}
+        {user?.role === 'student' && activePage === 'assignments' && <AssignmentUpload />}
+        {user?.role === 'student' && activePage === 'attendance' && <Attendance />}
+        
+        {/* Faculty Pages */}
+        {user?.role === 'faculty' && activePage === 'create-assignment' && <AssignmentCreate />}
+        {user?.role === 'faculty' && activePage === 'evaluate' && <AssignmentEvaluation />}
+        {user?.role === 'faculty' && activePage === 'generate-qr' && <AttendanceGenerate />}
+        
+        {/* Common Pages */}
         {activePage === 'classes' && (
           <div className="p-8">
             <h2 className="text-2xl font-bold text-slate-900">
@@ -186,6 +222,30 @@ const DashboardLayout = () => {
             <p className="text-slate-600 mt-2">Analytics page coming soon...</p>
           </div>
         )}
+        {activePage === 'users' && user?.role === 'admin' && (
+          <div className="p-8">
+            <h2 className="text-2xl font-bold text-slate-900">User Management</h2>
+            <p className="text-slate-600 mt-2">User management page coming soon...</p>
+          </div>
+        )}
+        {activePage === 'courses' && user?.role === 'admin' && (
+          <div className="p-8">
+            <h2 className="text-2xl font-bold text-slate-900">Course Management</h2>
+            <p className="text-slate-600 mt-2">Course management page coming soon...</p>
+          </div>
+        )}
+        {activePage === 'schedule' && user?.role === 'admin' && (
+          <div className="p-8">
+            <h2 className="text-2xl font-bold text-slate-900">Schedule Management</h2>
+            <p className="text-slate-600 mt-2">Schedule management page coming soon...</p>
+          </div>
+        )}
+        {activePage === 'settings' && user?.role === 'admin' && (
+          <div className="p-8">
+            <h2 className="text-2xl font-bold text-slate-900">System Settings</h2>
+            <p className="text-slate-600 mt-2">System settings page coming soon...</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -197,8 +257,25 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          <Route path="/" element={<><Navbar /><Landing /></>} />
-          <Route path="/login" element={<Login />} />
+          {/* Public Routes - redirect to dashboard if logged in */}
+          <Route path="/" element={
+            <PublicRoute>
+              <Navbar />
+              <Landing />
+            </PublicRoute>
+          } />
+          <Route path="/login" element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          } />
+          <Route path="/register" element={
+            <PublicRoute>
+              <Register />
+            </PublicRoute>
+          } />
+          
+          {/* Protected Route - dashboard */}
           <Route
             path="/dashboard"
             element={
@@ -207,6 +284,8 @@ function App() {
               </ProtectedRoute>
             }
           />
+          
+          {/* Redirect all other routes */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
