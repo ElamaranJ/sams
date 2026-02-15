@@ -275,6 +275,31 @@ const InfoSection = () => {
 
 // ============= VIDEO SECTION =============
 const VideoSection = () => {
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [showVideo, setShowVideo] = React.useState(false);
+  const videoRef = React.useRef(null);
+
+  const handlePlayVideo = () => {
+    setShowVideo(true);
+    if (videoRef.current) {
+      videoRef.current.play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch((error) => {
+          console.error('Video play error:', error);
+          alert('Could not play video. Please check if the video file exists in the public folder.');
+        });
+    }
+  };
+
+  const handlePauseVideo = () => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    }
+  };
+
   return (
     <div className="py-20 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(251,191,36,0.1),transparent_50%)]"></div>
@@ -295,16 +320,42 @@ const VideoSection = () => {
           </p>
 
           <div className="relative aspect-video bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl overflow-hidden shadow-2xl">
-            <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-                className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-2xl"
-              >
-                <PlayCircle size={48} className="text-slate-900 ml-1" fill="currentColor" />
-              </motion.button>
-            </div>
+            {/* Video Player */}
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              controls={isPlaying}
+              onEnded={() => {
+                setIsPlaying(false);
+                setShowVideo(false);
+              }}
+              onPause={() => setIsPlaying(false)}
+              onPlay={() => setIsPlaying(true)}
+            >
+              <source src="/promo-video.mp4" type="video/mp4" />
+              <source src="/promo-video.webm" type="video/webm" />
+              Your browser does not support the video tag.
+            </video>
+
+            {/* Play Button Overlay */}
+            {!showVideo && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-sm cursor-pointer"
+                   onClick={handlePlayVideo}>
+                <motion.div
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-2xl"
+                >
+                  <PlayCircle size={48} className="text-slate-900 ml-1" fill="currentColor" />
+                </motion.div>
+              </div>
+            )}
           </div>
+
+          {/* Instructions for missing video */}
+          <p className="text-xs text-slate-500 mt-4">
+            Place your video as <span className="font-mono bg-slate-800 px-2 py-1 rounded">promo-video.mp4</span> in the public folder
+          </p>
         </motion.div>
       </div>
     </div>

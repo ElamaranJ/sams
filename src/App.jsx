@@ -27,6 +27,11 @@ import Profile from './pages/Profile';
 import CalendarPage from './pages/Calendar';
 import Classes from './pages/Classes';
 import Grades from './pages/Grades';
+import FacultyClasses from './pages/FacultyClasses';
+import Students from './pages/Students';
+import UserManagement from './pages/UserManagement';
+import CourseManagement from './pages/CourseManagement';
+import ScheduleManagement from './pages/ScheduleManagement';
 
 // Import shared components
 import Navbar from './components/layout/Navbar';
@@ -196,34 +201,15 @@ const DashboardLayout = () => {
         {user?.role === 'faculty' && activePage === 'generate-qr' && <AttendanceGenerate />}
         
         {/* Common Pages */}
-        {activePage === 'classes' && <Classes />}
+        {activePage === 'classes' && user?.role === 'faculty' && <FacultyClasses />}
+        {activePage === 'classes' && user?.role !== 'faculty' && <Classes />}
         {activePage === 'calendar' && <CalendarPage />}
         {activePage === 'grades' && <Grades />}
-        {activePage === 'students' && (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold text-slate-900">Students</h2>
-            <p className="text-slate-600 mt-2">Student management page coming soon...</p>
-          </div>
-        )}
+        {activePage === 'students' && <Students />}
         {activePage === 'reports' && <Reports />}
-        {activePage === 'users' && user?.role === 'admin' && (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold text-slate-900">User Management</h2>
-            <p className="text-slate-600 mt-2">User management page coming soon...</p>
-          </div>
-        )}
-        {activePage === 'courses' && user?.role === 'admin' && (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold text-slate-900">Course Management</h2>
-            <p className="text-slate-600 mt-2">Course management page coming soon...</p>
-          </div>
-        )}
-        {activePage === 'schedule' && user?.role === 'admin' && (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold text-slate-900">Schedule Management</h2>
-            <p className="text-slate-600 mt-2">Schedule management page coming soon...</p>
-          </div>
-        )}
+        {activePage === 'users' && user?.role === 'admin' && <UserManagement />}
+        {activePage === 'courses' && user?.role === 'admin' && <CourseManagement />}
+        {activePage === 'schedule' && user?.role === 'admin' && <ScheduleManagement />}
         {activePage === 'settings' && <SettingsPage />}
         {activePage === 'profile' && <Profile />}
       </div>
@@ -273,4 +259,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;
