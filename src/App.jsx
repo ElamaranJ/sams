@@ -21,6 +21,12 @@ import AssignmentEvaluation from './pages/AssignmentEvaluation';
 import AssignmentCreate from './pages/AssignmentCreate';
 import Attendance from './pages/Attendance';
 import AttendanceGenerate from './pages/AttendanceGenerate';
+import SettingsPage from './pages/Settings';
+import Reports from './pages/Reports';
+import Profile from './pages/Profile';
+import CalendarPage from './pages/Calendar';
+import Classes from './pages/Classes';
+import Grades from './pages/Grades';
 
 // Import shared components
 import Navbar from './components/layout/Navbar';
@@ -94,7 +100,7 @@ const DashboardLayout = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Navbar />
+      <Navbar onNavigate={setActivePage} />
       
       {/* Sidebar */}
       <div className="fixed left-0 top-16 bottom-0 w-64 bg-white border-r-2 border-slate-100 overflow-y-auto z-40">
@@ -190,38 +196,16 @@ const DashboardLayout = () => {
         {user?.role === 'faculty' && activePage === 'generate-qr' && <AttendanceGenerate />}
         
         {/* Common Pages */}
-        {activePage === 'classes' && (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold text-slate-900">
-              {user?.role === 'faculty' ? 'My Classes' : 'Enrolled Classes'}
-            </h2>
-            <p className="text-slate-600 mt-2">Classes page coming soon...</p>
-          </div>
-        )}
-        {activePage === 'calendar' && (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold text-slate-900">Calendar</h2>
-            <p className="text-slate-600 mt-2">Calendar page coming soon...</p>
-          </div>
-        )}
-        {activePage === 'grades' && (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold text-slate-900">Grades</h2>
-            <p className="text-slate-600 mt-2">Grades page coming soon...</p>
-          </div>
-        )}
+        {activePage === 'classes' && <Classes />}
+        {activePage === 'calendar' && <CalendarPage />}
+        {activePage === 'grades' && <Grades />}
         {activePage === 'students' && (
           <div className="p-8">
             <h2 className="text-2xl font-bold text-slate-900">Students</h2>
             <p className="text-slate-600 mt-2">Student management page coming soon...</p>
           </div>
         )}
-        {activePage === 'reports' && (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold text-slate-900">Analytics & Reports</h2>
-            <p className="text-slate-600 mt-2">Analytics page coming soon...</p>
-          </div>
-        )}
+        {activePage === 'reports' && <Reports />}
         {activePage === 'users' && user?.role === 'admin' && (
           <div className="p-8">
             <h2 className="text-2xl font-bold text-slate-900">User Management</h2>
@@ -240,12 +224,8 @@ const DashboardLayout = () => {
             <p className="text-slate-600 mt-2">Schedule management page coming soon...</p>
           </div>
         )}
-        {activePage === 'settings' && user?.role === 'admin' && (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold text-slate-900">System Settings</h2>
-            <p className="text-slate-600 mt-2">System settings page coming soon...</p>
-          </div>
-        )}
+        {activePage === 'settings' && <SettingsPage />}
+        {activePage === 'profile' && <Profile />}
       </div>
     </div>
   );
@@ -293,4 +273,4 @@ function App() {
   );
 }
 
-export default App;
+export default App; 

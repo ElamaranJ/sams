@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Card from '../components/shared/GlassCard';
 import Button from '../components/ui/Button';
+import Chatbot from '../components/shared/Chatbot';
 import { useAuth } from '../context/AuthContext';
 
 const FacultyDashboard = () => {
@@ -502,6 +503,9 @@ const FacultyDashboard = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Chatbot */}
+      <Chatbot />
     </div>
   );
 };

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/shared/GlassCard';
+import Chatbot from '../components/shared/Chatbot';
 import { dummyData } from '../utils/dummyData';
 import { useAuth } from '../context/AuthContext';
 
@@ -136,6 +137,9 @@ const StudentDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Chatbot */}
+      <Chatbot />
     </div>
   );
 };

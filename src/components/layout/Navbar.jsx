@@ -4,11 +4,27 @@ import { motion } from 'framer-motion';
 import { Search, Bell, ChevronRight, LogOut, User, Settings } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../ui/Button';
+import NotificationsPanel from '../shared/NotificationsPanel';
 
-const Navbar = () => {
+const Navbar = ({ onNavigate }) => {
   const { isAuthenticated, user, logout } = useAuth();
   const [showProfile, setShowProfile] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const navigate = useNavigate();
+
+  const handleSettingsClick = () => {
+    if (onNavigate) {
+      onNavigate('settings');
+      setShowProfile(false);
+    }
+  };
+
+  const handleProfileClick = () => {
+    if (onNavigate) {
+      onNavigate('profile');
+      setShowProfile(false);
+    }
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-lg border-b-2 border-slate-100">
@@ -54,7 +70,10 @@ const Navbar = () => {
               <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors">
                 <Search size={20} className="text-slate-700" />
               </button>
-              <button className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors relative">
+              <button 
+                onClick={() => setShowNotifications(true)}
+                className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors relative"
+              >
                 <Bell size={20} className="text-slate-700" />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
               </button>
@@ -81,11 +100,17 @@ const Navbar = () => {
                       <p className="text-xs text-blue-600 mt-1 font-semibold capitalize">{user?.role}</p>
                     </div>
                     
-                    <button className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-3 transition-colors">
+                    <button 
+                      onClick={handleProfileClick}
+                      className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-3 transition-colors"
+                    >
                       <User size={18} /> Profile
                     </button>
                     
-                    <button className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-3 transition-colors">
+                    <button 
+                      onClick={handleSettingsClick}
+                      className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-3 transition-colors"
+                    >
                       <Settings size={18} /> Settings
                     </button>
                     
@@ -115,6 +140,12 @@ const Navbar = () => {
           )}
         </div>
       </div>
+
+      {/* Notifications Panel */}
+      <NotificationsPanel 
+        isOpen={showNotifications} 
+        onClose={() => setShowNotifications(false)} 
+      />
     </nav>
   );
 };
