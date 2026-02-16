@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { QrCode, CheckCircle, Clock, Calendar, BookOpen, Loader, Hash, Shield, AlertCircle, TrendingUp } from 'lucide-react';
+import { QrCode, CheckCircle, Clock, Calendar, BookOpen, Loader, Hash, Shield, AlertCircle, TrendingUp, Camera } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/shared/GlassCard';
 import Button from '../components/ui/Button';
 import { getStudentAttendance, markAttendance } from '../firebase/database';
 import { getDocs, collection, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
+import QRScanner from './QRScanner';
 
 const Attendance = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [attendance, setAttendance] = useState([]);
   const [activeTab, setActiveTab] = useState('mark'); // 'mark' or 'history'
+  const [showScanner, setShowScanner] = useState(false);
   
   // Mark attendance form
   const [sessionId, setSessionId] = useState('');
@@ -193,6 +195,21 @@ const Attendance = () => {
                 </div>
               )}
 
+              {/* ── Option 1: Scan QR ── */}
+              <button
+                onClick={() => setShowScanner(true)}
+                className="w-full mb-5 p-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-2xl flex items-center justify-center gap-3 font-black text-lg transition-all shadow-lg hover:shadow-xl"
+              >
+                <Camera size={24} />
+                Scan QR Code
+              </button>
+
+              <div className="relative mb-5">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t-2 border-dashed border-slate-200" /></div>
+                <div className="relative flex justify-center"><span className="px-3 bg-white text-slate-400 text-sm font-bold">OR enter OTP manually</span></div>
+              </div>
+
+              {/* ── Option 2: OTP ── */}
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-bold text-slate-700 mb-2 block">Session ID</label>
@@ -211,7 +228,7 @@ const Attendance = () => {
                 </div>
 
                 <Button variant="primary" fullWidth icon={CheckCircle} onClick={handleMarkAttendance} disabled={marking}>
-                  {marking ? 'Marking...' : 'Mark Attendance'}
+                  {marking ? 'Marking...' : 'Mark Attendance with OTP'}
                 </Button>
               </div>
             </Card>
@@ -223,25 +240,36 @@ const Attendance = () => {
               </h3>
               <div className="space-y-3 text-sm text-slate-700">
                 <div className="flex gap-3 p-3 bg-white rounded-xl">
-                  <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">1</span>
-                  <p>Your faculty generates a QR code in the "Generate QR" section</p>
+                  <span className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">1</span>
+                  <p><strong>QR Scan (easiest):</strong> Click "Scan QR Code" and point your camera at the faculty's screen</p>
                 </div>
                 <div className="flex gap-3 p-3 bg-white rounded-xl">
                   <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">2</span>
-                  <p>Faculty gives you the <strong>Session ID</strong> (shown on their screen)</p>
+                  <p><strong>OTP Method:</strong> Get the Session ID from faculty's screen and OTP verbally</p>
                 </div>
                 <div className="flex gap-3 p-3 bg-white rounded-xl">
                   <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">3</span>
-                  <p>Faculty verbally tells you the <strong>6-digit OTP</strong></p>
-                </div>
-                <div className="flex gap-3 p-3 bg-white rounded-xl">
-                  <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">4</span>
-                  <p>Enter both here and click <strong>"Mark Attendance"</strong></p>
+                  <p>Enter Session ID + OTP below and click <strong>"Mark Attendance with OTP"</strong></p>
                 </div>
               </div>
             </Card>
           </div>
         )}
+
+        {/* QR Scanner Modal */}
+        <AnimatePresence>
+          {showScanner && (
+            <QRScanner
+              onClose={() => setShowScanner(false)}
+              onScanSuccess={() => {
+                setShowScanner(false);
+                setMarkSuccess(true);
+                fetchAttendance();
+                setTimeout(() => setMarkSuccess(false), 5000);
+              }}
+            />
+          )}
+        </AnimatePresence>
 
         {activeTab === 'history' && (
           <div>

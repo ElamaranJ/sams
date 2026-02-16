@@ -376,15 +376,75 @@ export const markAttendance = async (sessionId, studentId) => {
     const existing = await getDocs(existingQ);
     if (!existing.empty) return { success: false, error: 'Attendance already marked for this session' };
 
+    // Fetch student profile for name, email, rollNo
+    const studentDoc = await getDoc(doc(db, 'users', studentId));
+    const studentData = studentDoc.exists() ? studentDoc.data() : {};
+
     await addDoc(collection(db, 'attendance'), {
       sessionId,
       studentId,
+      studentName: studentData.name || '',
+      studentEmail: studentData.email || '',
+      studentRollNo: studentData.studentId || studentData.rollNo || '',
       classId: session.classId,
       date: session.date || new Date().toISOString().split('T')[0],
       markedAt: new Date().toISOString(),
-      status: 'present'
+      status: 'present',
+      method: 'otp' // will be overridden to 'qr' if scanned
     });
     return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Mark attendance via QR scan — same as above but marks method as 'qr'
+export const markAttendanceViaQR = async (sessionId, studentId) => {
+  try {
+    const sessionDoc = await getDoc(doc(db, 'attendance_sessions', sessionId));
+    if (!sessionDoc.exists()) return { success: false, error: 'Session not found' };
+    const session = sessionDoc.data();
+    const now = new Date();
+    const expiresAt = new Date(session.expiresAt);
+    if (now > expiresAt) return { success: false, error: 'Session has expired. Ask faculty to generate a new QR.' };
+
+    const existingQ = query(
+      collection(db, 'attendance'),
+      where('sessionId', '==', sessionId),
+      where('studentId', '==', studentId)
+    );
+    const existing = await getDocs(existingQ);
+    if (!existing.empty) return { success: false, error: 'Your attendance is already marked for this session.' };
+
+    const studentDoc = await getDoc(doc(db, 'users', studentId));
+    const studentData = studentDoc.exists() ? studentDoc.data() : {};
+
+    await addDoc(collection(db, 'attendance'), {
+      sessionId,
+      studentId,
+      studentName: studentData.name || '',
+      studentEmail: studentData.email || '',
+      studentRollNo: studentData.studentId || studentData.rollNo || '',
+      classId: session.classId,
+      date: session.date || new Date().toISOString().split('T')[0],
+      markedAt: new Date().toISOString(),
+      status: 'present',
+      method: 'qr'
+    });
+    return { success: true, studentName: studentData.name || 'Student', className: session.className || session.classCode };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Get all students who attended a specific session (for faculty view)
+export const getSessionAttendees = async (sessionId) => {
+  try {
+    const q = query(collection(db, 'attendance'), where('sessionId', '==', sessionId));
+    const snapshot = await getDocs(q);
+    const attendees = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    attendees.sort((a, b) => new Date(a.markedAt || 0) - new Date(b.markedAt || 0));
+    return { success: true, attendees };
   } catch (error) {
     return { success: false, error: error.message };
   }

@@ -1,10 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Users, Check, Loader, Award, BookOpen, ChevronDown, Send, AlertCircle } from 'lucide-react';
+import { FileText, Check, Loader, BookOpen, Send, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/shared/GlassCard';
 import Button from '../components/ui/Button';
 import { getFacultyClasses, getClassAssignments, getAssignmentSubmissions, gradeSubmission } from '../firebase/database';
+
+const getFileEmoji = (type) => {
+  if (type === 'application/pdf') return '📄';
+  if (type?.includes('word')) return '📝';
+  if (type?.startsWith('image/')) return '🖼️';
+  return '📎';
+};
+
+const formatSize = (bytes) => {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+};
+
+// Download file from base64 data stored in Firestore
+const downloadFile = (submission) => {
+  if (!submission.fileData) return;
+  const link = document.createElement('a');
+  link.href = submission.fileData;          // "data:mime;base64,..."
+  link.download = submission.fileName || 'submission';
+  link.click();
+};
 
 const AssignmentEvaluation = () => {
   const { user } = useAuth();
@@ -15,7 +38,6 @@ const AssignmentEvaluation = () => {
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [submissions, setSubmissions] = useState([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
-  const [grading, setGrading] = useState({});
   const [grades, setGrades] = useState({});
   const [feedbacks, setFeedbacks] = useState({});
   const [gradingSubmissionId, setGradingSubmissionId] = useState(null);
@@ -68,8 +90,10 @@ const AssignmentEvaluation = () => {
     setGradingSubmissionId(submissionId);
     const result = await gradeSubmission(submissionId, numGrade, feedback);
     if (result.success) {
-      setSubmissions(prev => prev.map(s => s.id === submissionId ? { ...s, grade: numGrade, feedback, status: 'graded' } : s));
-      setSuccessMsg('Grade saved!');
+      setSubmissions(prev =>
+        prev.map(s => s.id === submissionId ? { ...s, grade: numGrade, feedback, status: 'graded' } : s)
+      );
+      setSuccessMsg('Grade saved successfully!');
       setTimeout(() => setSuccessMsg(''), 3000);
     } else {
       alert('Error grading: ' + result.error);
@@ -93,7 +117,7 @@ const AssignmentEvaluation = () => {
       <div className="max-w-6xl mx-auto px-6 py-24">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
           <h1 className="text-4xl font-black text-slate-900 mb-2">Evaluate Assignments 📋</h1>
-          <p className="text-lg text-slate-600">Grade student submissions and provide feedback</p>
+          <p className="text-lg text-slate-600">Download student files, grade submissions, and provide feedback</p>
         </motion.div>
 
         {successMsg && (
@@ -131,15 +155,19 @@ const AssignmentEvaluation = () => {
                   className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium focus:outline-none focus:border-blue-500"
                   disabled={assignments.length === 0}
                 >
-                  {assignments.length === 0 ? <option>No assignments yet</option> :
-                    assignments.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+                  {assignments.length === 0
+                    ? <option>No assignments yet</option>
+                    : assignments.map(a => <option key={a.id} value={a.id}>{a.title}</option>)
+                  }
                 </select>
               </div>
             </div>
 
             {/* Submissions */}
             {loadingSubmissions ? (
-              <div className="text-center py-12"><Loader className="animate-spin w-10 h-10 text-blue-600 mx-auto" /></div>
+              <div className="text-center py-12">
+                <Loader className="animate-spin w-10 h-10 text-blue-600 mx-auto" />
+              </div>
             ) : submissions.length === 0 ? (
               <Card className="p-12 text-center">
                 <FileText size={48} className="text-slate-300 mx-auto mb-4" />
@@ -151,21 +179,28 @@ const AssignmentEvaluation = () => {
                 <h2 className="text-2xl font-black text-slate-900 mb-4">
                   Submissions ({submissions.length})
                   <span className="ml-3 text-sm font-semibold text-slate-500">
-                    {submissions.filter(s => s.status === 'graded').length} graded · {submissions.filter(s => s.status === 'submitted').length} pending
+                    {submissions.filter(s => s.status === 'graded').length} graded
+                    &nbsp;·&nbsp;
+                    {submissions.filter(s => s.status === 'submitted').length} pending
                   </span>
                 </h2>
                 <div className="space-y-4">
-                  {submissions.map((sub, i) => (
-                    <Card key={i} className={`p-6 ${sub.status === 'graded' ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+                  {submissions.map((sub) => (
+                    <Card key={sub.id} className={`p-6 ${sub.status === 'graded' ? 'bg-green-50 border-green-200' : 'bg-white'}`}>
+                      
+                      {/* Header row */}
                       <div className="flex items-start justify-between mb-4">
                         <div>
                           <div className="flex items-center gap-3 mb-1">
                             <h3 className="text-lg font-black text-slate-900">{sub.studentName || 'Student'}</h3>
-                            <span className={`text-xs font-bold px-3 py-1 rounded-full ${sub.status === 'graded' ? 'bg-green-200 text-green-800' : 'bg-orange-100 text-orange-700'}`}>
+                            <span className={`text-xs font-bold px-3 py-1 rounded-full
+                              ${sub.status === 'graded' ? 'bg-green-200 text-green-800' : 'bg-orange-100 text-orange-700'}`}>
                               {sub.status === 'graded' ? 'GRADED' : 'PENDING'}
                             </span>
                           </div>
-                          <p className="text-sm text-slate-500">Submitted: {new Date(sub.submittedAt).toLocaleString()}</p>
+                          <p className="text-sm text-slate-500">
+                            Submitted: {new Date(sub.submittedAt).toLocaleString()}
+                          </p>
                         </div>
                         {sub.grade !== null && sub.grade !== undefined && (
                           <div className="text-right">
@@ -175,35 +210,73 @@ const AssignmentEvaluation = () => {
                         )}
                       </div>
 
-                      {sub.submissionText && (
+                      {/* ── File download section ── */}
+                      {sub.fileName && sub.fileData ? (
+                        <div className="mb-4 p-4 bg-slate-50 rounded-xl border-2 border-slate-200">
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Submitted File</p>
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-white rounded-xl border border-slate-200 flex items-center justify-center text-2xl shadow-sm shrink-0">
+                              {getFileEmoji(sub.fileType)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-slate-900 truncate">{sub.fileName}</p>
+                              {sub.fileSize && (
+                                <p className="text-sm text-slate-500">{formatSize(sub.fileSize)}</p>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => downloadFile(sub)}
+                              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors text-sm shrink-0"
+                            >
+                              <Download size={16} />
+                              Download
+                            </button>
+                          </div>
+                        </div>
+                      ) : sub.submissionText ? (
+                        /* Fallback for old text submissions */
                         <div className="mb-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                          <p className="text-sm font-bold text-slate-700 mb-1">Submission:</p>
+                          <p className="text-sm font-bold text-slate-700 mb-1">Submission (text):</p>
                           <p className="text-sm text-slate-700 whitespace-pre-wrap">{sub.submissionText}</p>
+                        </div>
+                      ) : (
+                        <div className="mb-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+                          <p className="text-sm text-yellow-700 font-semibold">⚠️ No file attached to this submission.</p>
                         </div>
                       )}
 
+                      {/* Grade input (only if not yet graded) */}
                       {sub.status !== 'graded' && (
                         <div className="grid grid-cols-2 gap-4 mt-4">
                           <div>
                             <label className="text-sm font-bold text-slate-700 mb-2 block">
                               Grade (out of {selectedAssignment?.totalPoints || 100})
                             </label>
-                            <input type="number" min="0" max={selectedAssignment?.totalPoints || 100}
+                            <input
+                              type="number" min="0" max={selectedAssignment?.totalPoints || 100}
                               value={grades[sub.id] || ''}
                               onChange={e => setGrades(prev => ({ ...prev, [sub.id]: e.target.value }))}
                               placeholder="Enter grade"
-                              className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium focus:outline-none focus:border-blue-500" />
+                              className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium focus:outline-none focus:border-blue-500"
+                            />
                           </div>
                           <div>
                             <label className="text-sm font-bold text-slate-700 mb-2 block">Feedback (optional)</label>
-                            <input type="text"
+                            <input
+                              type="text"
                               value={feedbacks[sub.id] || ''}
                               onChange={e => setFeedbacks(prev => ({ ...prev, [sub.id]: e.target.value }))}
                               placeholder="Add feedback..."
-                              className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium focus:outline-none focus:border-blue-500" />
+                              className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-medium focus:outline-none focus:border-blue-500"
+                            />
                           </div>
                           <div className="col-span-2">
-                            <Button variant="primary" onClick={() => handleGrade(sub.id)} disabled={gradingSubmissionId === sub.id} icon={Send}>
+                            <Button
+                              variant="primary"
+                              onClick={() => handleGrade(sub.id)}
+                              disabled={gradingSubmissionId === sub.id}
+                              icon={Send}
+                            >
                               {gradingSubmissionId === sub.id ? 'Saving...' : 'Save Grade'}
                             </Button>
                           </div>
