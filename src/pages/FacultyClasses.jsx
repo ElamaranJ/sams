@@ -4,7 +4,7 @@ import {
   BookOpen, Users, Clock, Calendar, TrendingUp,
   FileText, Award, Plus, Edit, Download,
   BarChart3, CheckCircle, Settings, Bell, Video, QrCode, Upload, Loader,
-  Trash2, X, ChevronRight
+  Trash2, X, ChevronRight, MoreVertical
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/shared/GlassCard';
@@ -12,167 +12,170 @@ import { useAuth } from '../context/AuthContext';
 import { getFacultyClasses, createClass, deleteClass } from '../firebase/database';
 
 const gradients = [
-  { color: 'from-blue-500 to-blue-600', image: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
-  { color: 'from-purple-500 to-purple-600', image: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
-  { color: 'from-green-500 to-emerald-600', image: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
-  { color: 'from-orange-500 to-red-500', image: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)' },
-  { color: 'from-teal-500 to-cyan-600', image: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
+  { color: 'from-blue-500 to-blue-600', shadow: 'shadow-blue-200' },
+  { color: 'from-purple-500 to-purple-600', shadow: 'shadow-purple-200' },
+  { color: 'from-emerald-500 to-teal-600', shadow: 'shadow-emerald-200' },
+  { color: 'from-rose-500 to-red-600', shadow: 'shadow-rose-200' },
 ];
 
-const FacultyClasses = () => {
+const FacultyClasses = ({ onNavigate }) => {
   const { user } = useAuth();
-  const [courses, setCourses] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState(null);
+  
   const [newClass, setNewClass] = useState({
-    name: '', code: '', description: '', schedule: '', room: '', semester: 'Spring 2026', credits: 3
+    code: '',
+    name: '',
+    schedule: '',
+    room: '',
+    semester: 'Spring 2026',
+    credits: 3
   });
 
   const fetchClasses = async () => {
     if (!user?.uid) return;
     setLoading(true);
     const result = await getFacultyClasses(user.uid);
-    if (result.success) setCourses(result.classes);
+    if (result.success) setClasses(result.classes);
     setLoading(false);
   };
 
   useEffect(() => { fetchClasses(); }, [user]);
 
   const handleCreateClass = async () => {
-    if (!newClass.name || !newClass.code) {
-      alert('Please fill in the class name and code.');
+    if (!newClass.code || !newClass.name) {
+      alert("Please fill in the Class Code and Name");
       return;
     }
     setCreating(true);
-    const gradIdx = courses.length % gradients.length;
     const result = await createClass({
       ...newClass,
-      credits: parseInt(newClass.credits),
       facultyId: user.uid,
       instructor: user.name,
-      color: gradients[gradIdx].color,
-      image: gradients[gradIdx].image,
-      icon: '📚',
-      studentsCount: 0
+      enrolled: 0
     });
+    
     if (result.success) {
-      alert('✅ Class created! All existing students have been auto-enrolled.');
       setShowCreateModal(false);
-      setNewClass({ name: '', code: '', description: '', schedule: '', room: '', semester: 'Spring 2026', credits: 3 });
       fetchClasses();
-    } else {
-      alert('❌ Error: ' + result.error);
+      setNewClass({ code: '', name: '', schedule: '', room: '', semester: 'Spring 2026', credits: 3 });
     }
     setCreating(false);
   };
 
-  const handleDeleteClass = async (classId, className) => {
-    if (!window.confirm(`Delete "${className}"? This cannot be undone.`)) return;
-    setDeleting(classId);
+  const handleDeleteClass = async (e, classId) => {
+    e.stopPropagation();
+    if (!window.confirm("Are you sure? This will remove all students from this class.")) return;
     const result = await deleteClass(classId);
-    if (result.success) {
-      setCourses(prev => prev.filter(c => c.id !== classId));
-    } else {
-      alert('❌ Error: ' + result.error);
-    }
-    setDeleting(null);
+    if (result.success) fetchClasses();
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader className="animate-spin w-12 h-12 text-blue-600 mx-auto mb-4" />
-          <p className="text-lg font-semibold text-slate-700">Loading your classes...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <Loader className="animate-spin text-blue-600" size={40} />
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-7xl mx-auto px-6 py-24">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-black text-slate-900 mb-2">My Teaching Schedule 👨‍🏫</h1>
-              <p className="text-lg text-slate-600">Manage your courses and students</p>
-            </div>
-            <Button variant="primary" icon={Plus} onClick={() => setShowCreateModal(true)}>
-              Create New Class
-            </Button>
-          </div>
-        </motion.div>
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {[
-            { label: 'Active Courses', value: courses.length.toString(), icon: BookOpen, color: 'from-blue-500 to-blue-600' },
-            { label: 'Total Assignments', value: '-', icon: FileText, color: 'from-orange-500 to-red-500' },
-            { label: 'Avg Attendance', value: '-', icon: TrendingUp, color: 'from-green-500 to-emerald-600' }
-          ].map((stat, i) => (
-            <Card key={i} delay={i * 0.1} className="p-6 hover:shadow-xl transition-shadow">
-              <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center mb-4 shadow-lg`}>
-                <stat.icon size={24} className="text-white" />
-              </div>
-              <div className="text-sm font-bold text-slate-500 mb-1">{stat.label}</div>
-              <div className="text-3xl font-black text-slate-900">{stat.value}</div>
-            </Card>
-          ))}
+    <div className="min-h-screen bg-slate-50 p-6 pt-24 pb-12">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+            <h1 className="text-4xl font-black text-slate-900 mb-2">My Classes 📚</h1>
+            <p className="text-slate-600 font-medium text-lg">Manage your curriculum and student engagement</p>
+          </motion.div>
+          <Button variant="primary" size="lg" icon={Plus} onClick={() => setShowCreateModal(true)}>
+            Create New Class
+          </Button>
         </div>
 
-        {courses.length === 0 ? (
-          <Card className="p-12 text-center">
-            <BookOpen size={56} className="text-slate-300 mx-auto mb-4" />
-            <h3 className="text-2xl font-black text-slate-900 mb-2">No Classes Created Yet</h3>
-            <p className="text-slate-600 mb-6">
-              Create your first class. Students will be <strong>automatically enrolled</strong> as soon as you create it!
-            </p>
-            <Button variant="primary" icon={Plus} onClick={() => setShowCreateModal(true)}>
-              Create Your First Class
-            </Button>
-          </Card>
+        {/* Classes Grid */}
+        {classes.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-200">
+            <BookOpen size={64} className="mx-auto text-slate-200 mb-4" />
+            <h3 className="text-xl font-bold text-slate-400">No classes found</h3>
+            <p className="text-slate-500 mb-6">Start by creating your first course</p>
+            <Button variant="secondary" onClick={() => setShowCreateModal(true)}>Get Started</Button>
+          </div>
         ) : (
-          <div className="grid gap-6">
-            {courses.map((course, i) => (
-              <Card key={i} hover className="overflow-hidden">
-                <div className="flex">
-                  <div className="w-2 flex-shrink-0" style={{ background: course.image }} />
-                  <div className="flex-1 p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="text-sm font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-lg">
-                            {course.code}
-                          </span>
-                          <span className="text-xs font-semibold text-slate-400">{course.semester}</span>
-                        </div>
-                        <h3 className="text-xl font-black text-slate-900 mb-1">{course.name}</h3>
-                        {course.description && <p className="text-sm text-slate-600 mb-2">{course.description}</p>}
-                        <div className="flex items-center gap-4 text-sm text-slate-600">
-                          {course.schedule && <span className="flex items-center gap-1"><Clock size={14} />{course.schedule}</span>}
-                          {course.room && <span className="flex items-center gap-1"><Calendar size={14} />{course.room}</span>}
-                          <span className="flex items-center gap-1"><Award size={14} />{course.credits || 3} credits</span>
-                        </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {classes.map((cls, index) => {
+              const grad = gradients[index % gradients.length];
+              return (
+                <motion.div 
+                  key={cls.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <Card className="overflow-hidden group hover:shadow-2xl transition-all duration-300 border-none bg-white">
+                    {/* Header Image/Color */}
+                    <div className={`h-32 bg-gradient-to-br ${grad.color} p-6 relative`}>
+                      <div className="flex justify-between items-start text-white">
+                        <span className="text-xs font-black uppercase tracking-widest bg-white/20 px-2 py-1 rounded-md backdrop-blur-md">
+                          {cls.code}
+                        </span>
+                        <button 
+                          onClick={(e) => handleDeleteClass(e, cls.id)}
+                          className="p-2 bg-white/10 hover:bg-red-500 rounded-lg transition-colors text-white"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" icon={Trash2} onClick={() => handleDeleteClass(course.id, course.name)} disabled={deleting === course.id}>
-                          {deleting === course.id ? 'Deleting...' : 'Delete'}
-                        </Button>
-                      </div>
+                      <h3 className="text-2xl font-black text-white mt-2 truncate">{cls.name}</h3>
                     </div>
 
-                    <div className="flex items-center gap-2 mt-4">
-                      <Button variant="outline" size="sm" icon={QrCode} className="flex-1">Generate QR</Button>
-                      <Button variant="outline" size="sm" icon={Plus} className="flex-1">New Assignment</Button>
-                      <Button variant="outline" size="sm" icon={BarChart3} className="flex-1">Analytics</Button>
+                    <div className="p-6">
+                      <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div className="flex items-center gap-2 text-slate-500">
+                          <Users size={16} className="text-blue-500" />
+                          <span className="text-sm font-bold">{cls.enrolled || 0} Students</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-500">
+                          <Clock size={16} className="text-purple-500" />
+                          <span className="text-sm font-bold">{cls.credits} Credits</span>
+                        </div>
+                        <div className="col-span-2 flex items-center gap-2 text-slate-500">
+                          <Calendar size={16} className="text-emerald-500" />
+                          <span className="text-sm font-bold truncate">{cls.schedule || 'Schedule not set'}</span>
+                        </div>
+                      </div>
+
+                      {/* FIXED: Functional Quick Action Buttons */}
+                      <div className="space-y-2 border-t pt-4">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Management Tools</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <QuickActionBtn 
+                            icon={QrCode} 
+                            label="Attendance" 
+                            onClick={() => onNavigate('generate-qr')} 
+                          />
+                          <QuickActionBtn 
+                            icon={Plus} 
+                            label="+ Assignment" 
+                            onClick={() => onNavigate('create-assignment')} 
+                          />
+                          <QuickActionBtn 
+                            icon={FileText} 
+                            label="Grading" 
+                            onClick={() => onNavigate('evaluate')} 
+                          />
+                          <QuickActionBtn 
+                            icon={Users} 
+                            label="Students" 
+                            onClick={() => onNavigate('students')} 
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
+                  </Card>
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -180,93 +183,47 @@ const FacultyClasses = () => {
       {/* Create Class Modal */}
       <AnimatePresence>
         {showCreateModal && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6"
-            onClick={() => setShowCreateModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-black text-slate-900">Create New Class</h3>
-                <button onClick={() => setShowCreateModal(false)} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-slate-200">
-                  <X size={16} />
-                </button>
-              </div>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowCreateModal(false)} className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="relative w-full max-w-lg bg-white rounded-3xl p-8 shadow-2xl">
+              <h2 className="text-3xl font-black text-slate-900 mb-6">New Course</h2>
               <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-bold text-slate-700 mb-2 block">Class Name *</label>
-                  <input type="text" value={newClass.name} onChange={e => setNewClass({...newClass, name: e.target.value})}
-                    placeholder="e.g., Introduction to Programming"
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                <div className="grid grid-cols-3 gap-4">
+                   <div className="col-span-1">
+                     <label className="text-xs font-black text-slate-400 uppercase mb-2 block">Code</label>
+                     <input type="text" placeholder="CS101" className="w-full p-4 bg-slate-50 border-2 rounded-2xl outline-none focus:border-blue-500 font-bold" value={newClass.code} onChange={e => setNewClass({...newClass, code: e.target.value})} />
+                   </div>
+                   <div className="col-span-2">
+                     <label className="text-xs font-black text-slate-400 uppercase mb-2 block">Course Name</label>
+                     <input type="text" placeholder="Advanced React" className="w-full p-4 bg-slate-50 border-2 rounded-2xl outline-none focus:border-blue-500 font-bold" value={newClass.name} onChange={e => setNewClass({...newClass, name: e.target.value})} />
+                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-bold text-slate-700 mb-2 block">Class Code *</label>
-                  <input type="text" value={newClass.code} onChange={e => setNewClass({...newClass, code: e.target.value})}
-                    placeholder="e.g., CS 101"
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="text-sm font-bold text-slate-700 mb-2 block">Description</label>
-                  <textarea value={newClass.description} onChange={e => setNewClass({...newClass, description: e.target.value})}
-                    placeholder="Short description of the class..."
-                    rows={2}
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                  <label className="text-xs font-black text-slate-400 uppercase mb-2 block">Schedule</label>
+                  <input type="text" placeholder="Mon, Wed - 10:00 AM" className="w-full p-4 bg-slate-50 border-2 rounded-2xl outline-none focus:border-blue-500 font-bold" value={newClass.schedule} onChange={e => setNewClass({...newClass, schedule: e.target.value})} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-bold text-slate-700 mb-2 block">Schedule</label>
-                    <input type="text" value={newClass.schedule} onChange={e => setNewClass({...newClass, schedule: e.target.value})}
-                      placeholder="e.g., Mon, Wed - 10AM"
-                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
-                  </div>
-                  <div>
-                    <label className="text-sm font-bold text-slate-700 mb-2 block">Room</label>
-                    <input type="text" value={newClass.room} onChange={e => setNewClass({...newClass, room: e.target.value})}
-                      placeholder="e.g., Lab 3"
-                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-bold text-slate-700 mb-2 block">Semester</label>
-                    <select value={newClass.semester} onChange={e => setNewClass({...newClass, semester: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500">
-                      <option>Spring 2026</option>
-                      <option>Fall 2026</option>
-                      <option>Summer 2026</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-bold text-slate-700 mb-2 block">Credits</label>
-                    <select value={newClass.credits} onChange={e => setNewClass({...newClass, credits: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500">
-                      <option value={1}>1</option>
-                      <option value={2}>2</option>
-                      <option value={3}>3</option>
-                      <option value={4}>4</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800">
-                  <strong>✅ Auto-enrollment:</strong> All existing students will be automatically enrolled in this class when you create it.
-                </div>
-                <div className="flex gap-3 pt-2">
                   <Button variant="ghost" fullWidth onClick={() => setShowCreateModal(false)}>Cancel</Button>
-                  <Button variant="primary" fullWidth onClick={handleCreateClass} disabled={creating}>
-                    {creating ? 'Creating...' : 'Create Class'}
-                  </Button>
+                  <Button variant="primary" fullWidth onClick={handleCreateClass} disabled={creating}>{creating ? 'Creating...' : 'Launch Course'}</Button>
                 </div>
               </div>
             </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
   );
 };
+
+// Helper Component for the buttons inside the card
+const QuickActionBtn = ({ icon: Icon, label, onClick }) => (
+  <button 
+    onClick={onClick}
+    className="flex items-center gap-2 px-3 py-2 bg-slate-50 text-slate-700 rounded-xl text-xs font-black hover:bg-blue-600 hover:text-white transition-all duration-200 border border-slate-100"
+  >
+    <Icon size={14} />
+    {label}
+  </button>
+);
 
 export default FacultyClasses;

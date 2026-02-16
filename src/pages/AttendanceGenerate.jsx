@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   QrCode, Clock, Users, Calendar, CheckCircle, AlertCircle,
-  BookOpen, Loader, Copy, Shield, UserCheck
+  BookOpen, Loader, Copy, Shield, UserCheck, Trash2, Filter
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
@@ -13,22 +13,27 @@ import {
   getClassAttendanceSessions,
   getSessionAttendees
 } from '../firebase/database';
+import { deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const AttendanceGenerate = () => {
   const { user } = useAuth();
-  const [courses, setCourses]           = useState([]);
-  const [loading, setLoading]           = useState(true);
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCourse, setSelectedCourse] = useState(null);
-  const [qrDuration, setQrDuration]     = useState(10);
-  const [generatedQR, setGeneratedQR]   = useState(null);
-  const [otp, setOtp]                   = useState('');
+  const [qrDuration, setQrDuration] = useState(10);
+  const [generatedQR, setGeneratedQR] = useState(null);
+  const [otp, setOtp] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(null);
   const [sessionHistory, setSessionHistory] = useState([]);
-  const [copied, setCopied]             = useState(false);
-  const [attendees, setAttendees]       = useState([]);
+  const [copied, setCopied] = useState(false);
+  const [attendees, setAttendees] = useState([]);
   const [loadingAttendees, setLoadingAttendees] = useState(false);
   const [selectedHistorySession, setSelectedHistorySession] = useState(null);
+  
+  // NEW: Filter state to hide old sessions
+  const [showAllHistory, setShowAllHistory] = useState(false);
 
   const pollRef = useRef(null);
 
@@ -48,12 +53,13 @@ const AttendanceGenerate = () => {
   }, [user]);
 
   // ── Session history when course changes ────────────────────────────────────
+  const fetchHistory = async () => {
+    if (!selectedCourse) return;
+    const result = await getClassAttendanceSessions(selectedCourse.id);
+    if (result.success) setSessionHistory(result.sessions);
+  };
+
   useEffect(() => {
-    const fetchHistory = async () => {
-      if (!selectedCourse) return;
-      const result = await getClassAttendanceSessions(selectedCourse.id);
-      if (result.success) setSessionHistory(result.sessions.slice(0, 15));
-    };
     fetchHistory();
     setGeneratedQR(null);
     setOtp('');
@@ -105,34 +111,29 @@ const AttendanceGenerate = () => {
     const sessionId = `${selectedCourse.code}-${Date.now()}`;
     const today = new Date().toISOString().split('T')[0];
 
-    // Create session in Database
     const result = await createAttendanceSession({
-      classId:     selectedCourse.id,
-      classCode:   selectedCourse.code,
-      className:   selectedCourse.name,
-      facultyId:   user.uid,
+      classId: selectedCourse.id,
+      classCode: selectedCourse.code,
+      className: selectedCourse.name,
+      facultyId: user.uid,
       facultyName: user.name,
-      otp:         newOTP,
-      duration:    qrDuration,
-      date:        today,
+      otp: newOTP,
+      duration: qrDuration,
+      date: today,
       sessionId,
     });
 
     if (result.success) {
-      // Small data payload for the QR code
       const qrData = {
-        sessionId:  result.sessionId, // This is the ID Scanner needs
-        otp:        newOTP,
+        sessionId: result.sessionId, 
+        otp: newOTP,
       };
       
       setOtp(newOTP);
       setGeneratedQR(qrData);
       setTimeRemaining(qrDuration * 60);
       startPollingAttendees(result.sessionId);
-
-      // Refresh history
-      const histResult = await getClassAttendanceSessions(selectedCourse.id);
-      if (histResult.success) setSessionHistory(histResult.sessions.slice(0, 15));
+      fetchHistory(); // Refresh history
     } else {
       alert('Error creating session: ' + result.error);
     }
@@ -150,6 +151,7 @@ const AttendanceGenerate = () => {
     return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
   };
 
+  // ── View attendees ─────────────────────────────────────────────────────────
   const viewHistoryAttendees = async (session) => {
     if (selectedHistorySession?.id === session.id) {
       setSelectedHistorySession(null);
@@ -163,13 +165,33 @@ const AttendanceGenerate = () => {
     setLoadingAttendees(false);
   };
 
-  // ── Helper to generate QR Image URL ──
+  // ── NEW: Delete Session ────────────────────────────────────────────────────
+  const handleDeleteSession = async (e, sessionId) => {
+    e.stopPropagation(); // Prevent opening the accordion
+    if (!window.confirm("Are you sure you want to delete this session history?")) return;
+    
+    try {
+      await deleteDoc(doc(db, "attendance_sessions", sessionId));
+      // Remove from UI immediately
+      setSessionHistory(prev => prev.filter(s => s.id !== sessionId));
+      if (selectedHistorySession?.id === sessionId) setSelectedHistorySession(null);
+    } catch (err) {
+      alert("Error deleting session: " + err.message);
+    }
+  };
+
+  // ── Helper: QR URL ─────────────────────────────────────────────────────────
   const getQRUrl = (data) => {
     if (!data) return '';
-    // We use a reliable public API to generate the QR image
     const jsonString = JSON.stringify(data);
     return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(jsonString)}`;
   };
+
+  // ── Helper: Filter History ─────────────────────────────────────────────────
+  const todayDate = new Date().toISOString().split('T')[0];
+  const displayedHistory = showAllHistory 
+    ? sessionHistory 
+    : sessionHistory.filter(s => (s.date === todayDate) || (s.createdAt?.startsWith(todayDate)));
 
   // ── Attendees table ────────────────────────────────────────────────────────
   const AttendeesTable = ({ list, isLive }) => (
@@ -304,7 +326,7 @@ const AttendanceGenerate = () => {
                         <p className="text-sm text-slate-600">Session expires in</p>
                       </div>
 
-                      {/* Real QR Code - Using API Image */}
+                      {/* Real QR Code */}
                       <div className="bg-white rounded-2xl p-4 mb-4 flex flex-col items-center border-2 border-blue-100 shadow-sm">
                         <img 
                           src={getQRUrl(generatedQR)}
@@ -350,43 +372,59 @@ const AttendanceGenerate = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
-
-              {!generatedQR && (
-                <Card className="p-6 bg-yellow-50 border-yellow-200 text-center">
-                  <AlertCircle size={32} className="text-yellow-600 mx-auto mb-3" />
-                  <p className="text-sm text-slate-700">No active QR session. Click "Generate QR + OTP" to start attendance.</p>
-                </Card>
-              )}
             </div>
 
             {/* ── Right: Session History ── */}
             <div>
               <Card className="p-6">
-                <h2 className="text-xl font-black text-slate-900 mb-5">Session History</h2>
-                {sessionHistory.length === 0 ? (
+                <div className="flex items-center justify-between mb-5">
+                   <h2 className="text-xl font-black text-slate-900">Session History</h2>
+                   <button 
+                     onClick={() => setShowAllHistory(!showAllHistory)}
+                     className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
+                   >
+                     <Filter size={14} />
+                     {showAllHistory ? 'Show Today Only' : 'Show All History'}
+                   </button>
+                </div>
+
+                {displayedHistory.length === 0 ? (
                   <div className="text-center py-8">
                     <Clock size={36} className="text-slate-300 mx-auto mb-3" />
-                    <p className="text-slate-500">No sessions yet for this class.</p>
+                    <p className="text-slate-500">
+                      {showAllHistory ? 'No sessions found.' : 'No sessions today.'}
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {sessionHistory.map((session) => (
+                    {displayedHistory.map((session) => (
                       <div key={session.id}>
-                        <button
-                          onClick={() => viewHistoryAttendees(session)}
-                          className="w-full p-4 bg-slate-50 rounded-xl hover:bg-blue-50 transition-colors text-left"
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-slate-900">{session.className || session.classCode}</span>
-                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${session.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'}`}>
-                              {session.isActive ? 'Active' : 'Ended'}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-4 text-xs text-slate-500">
-                            <span className="flex items-center gap-1"><Calendar size={12} />{session.date || session.createdAt?.split('T')[0]}</span>
-                            <span className="flex items-center gap-1"><Clock size={12} />{session.duration} min</span>
-                          </div>
-                        </button>
+                        <div className="relative group">
+                          <button
+                            onClick={() => viewHistoryAttendees(session)}
+                            className="w-full p-4 bg-slate-50 rounded-xl hover:bg-blue-50 transition-colors text-left pr-12"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-slate-900">{session.className || session.classCode}</span>
+                              <span className={`text-xs font-bold px-2 py-1 rounded-full ${session.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'}`}>
+                                {session.isActive ? 'Active' : 'Ended'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs text-slate-500">
+                              <span className="flex items-center gap-1"><Calendar size={12} />{session.date || session.createdAt?.split('T')[0]}</span>
+                              <span className="flex items-center gap-1"><Clock size={12} />{session.duration} min</span>
+                            </div>
+                          </button>
+
+                          {/* DELETE BUTTON */}
+                          <button 
+                            onClick={(e) => handleDeleteSession(e, session.id)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-white text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg shadow-sm border border-slate-100 transition-all opacity-0 group-hover:opacity-100 z-10"
+                            title="Delete this history"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
 
                         <AnimatePresence>
                           {selectedHistorySession?.id === session.id && (
@@ -410,6 +448,15 @@ const AttendanceGenerate = () => {
                     ))}
                   </div>
                 )}
+              </Card>
+
+              <Card className="p-6 mt-6 bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+                <h3 className="text-lg font-black text-slate-900 mb-3">How it works 📋</h3>
+                <div className="space-y-2 text-sm text-slate-700">
+                  <div className="flex gap-2 items-start"><CheckCircle size={14} className="text-green-600 mt-0.5 flex-shrink-0" /><span>History automatically hides tomorrow.</span></div>
+                  <div className="flex gap-2 items-start"><CheckCircle size={14} className="text-green-600 mt-0.5 flex-shrink-0" /><span>Hover over a row to see the Delete (Trash) button.</span></div>
+                  <div className="flex gap-2 items-start"><CheckCircle size={14} className="text-green-600 mt-0.5 flex-shrink-0" /><span>Click "Show All History" to see past days.</span></div>
+                </div>
               </Card>
             </div>
           </div>

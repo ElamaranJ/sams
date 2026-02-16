@@ -1,295 +1,407 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
 import { 
-  CheckCircle, Clock, Calendar, Loader, Shield, 
-  AlertCircle, TrendingUp, Camera 
+  CheckCircle, Clock, Calendar as CalendarIcon, Loader, Shield, 
+  AlertCircle, TrendingUp, Camera, ChevronRight, Layout,
+  UserCheck, Info, Zap, Search, ArrowUpRight, Target, Star,
+  BookOpen, Hash, CheckSquare, X, Database, ShieldCheck,
+  Activity, Fingerprint, Cpu, Globe, Lock, BarChart3
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/shared/GlassCard';
 import Button from '../components/ui/Button';
-import { getStudentAttendance, markAttendance } from '../firebase/database';
+import { getStudentAttendance, markAttendance, getStudentClasses } from '../firebase/database';
 import { getDocs, collection, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import QRScanner from './QRScanner';
 
+// ==========================================
+// 1. STABLE CALENDAR STYLING
+// ==========================================
+const calendarStyles = `
+  .attendance-calendar {
+    width: 100% !important;
+    border: none !important;
+    font-family: inherit !important;
+    background: white !important;
+  }
+  .react-calendar__tile {
+    height: 75px !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px !important;
+    font-weight: 700 !important;
+    font-size: 0.9rem !important;
+    transition: all 0.2s ease;
+    border: 2px solid transparent !important;
+    color: #475569;
+  }
+  .react-calendar__tile--active {
+    background: #2563eb !important;
+    color: white !important;
+  }
+  .present-day {
+    background: #f0fdf4 !important;
+    color: #16a34a !important;
+    border-bottom: 3px solid #22c55e !important;
+  }
+  .absent-day {
+    background: #fff1f2 !important;
+    color: #e11d48 !important;
+  }
+  .react-calendar__navigation {
+    margin-bottom: 1rem !important;
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 5px;
+  }
+  .react-calendar__navigation button {
+    font-weight: 800 !important;
+    color: #1e293b;
+    min-width: 40px;
+  }
+  .react-calendar__month-view__weekdays__weekday abbr {
+    text-decoration: none !important;
+    font-weight: 700 !important;
+    color: #94a3b8;
+    font-size: 11px;
+    text-transform: uppercase;
+  }
+`;
+
+// ==========================================
+// 2. MAIN ATTENDANCE COMPONENT
+// ==========================================
+
 const Attendance = () => {
   const { user } = useAuth();
+  
+  // Data States
   const [loading, setLoading] = useState(true);
   const [attendance, setAttendance] = useState([]);
-  const [activeTab, setActiveTab] = useState('mark'); // 'mark' or 'history'
-  const [showScanner, setShowScanner] = useState(false);
+  const [userClasses, setUserClasses] = useState([]);
   
-  // Mark attendance form
+  // Simple View Navigation
+  const [activeTab, setActiveTab] = useState('mark'); 
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  
+  // Verification States
+  const [showScanner, setShowScanner] = useState(false);
   const [otpInput, setOtpInput] = useState('');
   const [marking, setMarking] = useState(false);
   const [markSuccess, setMarkSuccess] = useState(false);
   const [markError, setMarkError] = useState('');
   const [successDetails, setSuccessDetails] = useState(null);
 
-  const fetchAttendance = async () => {
+  // ─── Load Real Data ────────────────────────────────────────────────────────
+  const fetchMyAttendance = async () => {
     if (!user?.uid) return;
     setLoading(true);
-    const result = await getStudentAttendance(user.uid);
-    if (result.success) setAttendance(result.attendance);
-    setLoading(false);
+    try {
+      const [attRes, clsRes] = await Promise.all([
+        getStudentAttendance(user.uid),
+        getStudentClasses(user.uid)
+      ]);
+      if (attRes.success) setAttendance(attRes.attendance);
+      if (clsRes.success) setUserClasses(clsRes.classes);
+    } catch (err) {
+      console.error("Failed to load records:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { fetchAttendance(); }, [user]);
+  useEffect(() => { fetchMyAttendance(); }, [user]);
 
-  const handleMarkAttendance = async () => {
-    // 1. Validate Input
-    if (!otpInput.trim() || otpInput.length !== 6) { 
-      setMarkError('Please enter the 6-digit OTP.'); 
-      return; 
+  // ─── Data Helpers ──────────────────────────────────────────────────────────
+  const attendanceLookup = useMemo(() => {
+    return attendance.reduce((acc, rec) => {
+      const d = rec.date || (rec.markedAt ? rec.markedAt.split('T')[0] : null);
+      if (d) {
+        if (!acc[d]) acc[d] = [];
+        acc[d].push(rec);
+      }
+      return acc;
+    }, {});
+  }, [attendance]);
+
+  const dashboardStats = useMemo(() => {
+    const present = attendance.filter(a => a.status === 'present').length;
+    const rate = attendance.length > 0 ? Math.round((present / attendance.length) * 100) : 0;
+    return { present, rate, total: attendance.length };
+  }, [attendance]);
+
+  // Filters classes for the sidebar when a date is clicked
+  const classesThisDay = useMemo(() => {
+    const key = selectedDate.toISOString().split('T')[0];
+    const records = attendanceLookup[key] || [];
+    return records.map(r => {
+      const info = userClasses.find(c => c.id === r.classId);
+      return { 
+        ...r, 
+        name: info ? info.name : 'Unknown Class', 
+        code: info ? info.code : 'No Code'
+      };
+    });
+  }, [selectedDate, attendanceLookup, userClasses]);
+
+  // ─── Calendar Logic ────────────────────────────────────────────────────────
+  const getTileClass = ({ date, view }) => {
+    if (view === 'month') {
+      const str = date.toISOString().split('T')[0];
+      if (attendanceLookup[str]?.some(r => r.status === 'present')) return 'present-day';
+      if (date < new Date().setHours(0,0,0,0) && !attendanceLookup[str]) return 'absent-day';
     }
-    
+    return null;
+  };
+
+  // ─── Button Actions ────────────────────────────────────────────────────────
+  const handleMarkWithOTP = async () => {
+    if (otpInput.length !== 6) { setMarkError('Please enter all 6 numbers.'); return; }
     setMarking(true);
     setMarkError('');
-    setSuccessDetails(null);
 
     try {
-      // 2. Find the session using ONLY the OTP
-      // We search the 'attendance_sessions' collection for a document with this OTP
-      const q = query(
-        collection(db, 'attendance_sessions'),
-        where('otp', '==', otpInput.trim())
-      );
+      const q = query(collection(db, 'attendance_sessions'), where('otp', '==', otpInput.trim()));
+      const snap = await getDocs(q);
       
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
-        setMarkError('Invalid OTP. Please check the code and try again.');
+      if (snap.empty) {
+        setMarkError('Invalid code. Please check with your teacher.');
         setMarking(false);
         return;
       }
 
-      // 3. Check if the session is expired
-      const now = new Date();
-      // We take the first matching session (OTPs should ideally be unique active)
-      const sessionDoc = querySnapshot.docs[0];
-      const sessionData = sessionDoc.data();
-      const expiresAt = new Date(sessionData.expiresAt);
-
-      if (now > expiresAt) {
-        setMarkError('This OTP has expired. Ask faculty for a new one.');
+      const session = snap.docs[0];
+      const data = session.data();
+      
+      if (new Date() > new Date(data.expiresAt)) {
+        setMarkError('This code has expired.');
         setMarking(false);
         return;
       }
 
-      // 4. Mark the attendance using the Session ID found
-      const result = await markAttendance(sessionDoc.id, user.uid);
-      
+      const result = await markAttendance(session.id, user.uid);
       if (result.success) {
         setMarkSuccess(true);
-        setSuccessDetails(`Class: ${sessionData.className || sessionData.classCode}`);
+        setSuccessDetails(`Success for ${data.className || 'Class'}`);
         setOtpInput('');
-        fetchAttendance(); // Refresh the list
+        fetchMyAttendance();
         setTimeout(() => setMarkSuccess(false), 5000);
       } else {
-        setMarkError(result.error || 'Failed to mark attendance.');
+        setMarkError(result.error);
       }
-
     } catch (err) {
-      console.error(err);
-      setMarkError('System Error: ' + err.message);
+      setMarkError('Could not connect to database.');
     } finally {
       setMarking(false);
     }
   };
 
-  const presentCount = attendance.filter(a => a.status === 'present').length;
-  const attendanceRate = attendance.length > 0 ? Math.round((presentCount / attendance.length) * 100) : 0;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader className="animate-spin w-12 h-12 text-blue-600 mx-auto mb-4" />
-          <p className="text-lg font-semibold text-slate-700">Loading attendance...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <Loader className="animate-spin text-blue-600" size={32} />
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-4xl mx-auto px-6 py-24">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
-          <h1 className="text-4xl font-black text-slate-900 mb-2">Attendance 📱</h1>
-          <p className="text-lg text-slate-600">Mark your attendance easily</p>
-        </motion.div>
+    <div className="min-h-screen bg-[#fcfdfe] p-6 pt-24 pb-12">
+      <style>{calendarStyles}</style>
+      <div className="max-w-[1200px] mx-auto">
+        
+        {/* Simple Header */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-10 gap-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <h1 className="text-5xl font-black text-slate-900 tracking-tight mb-2">
+              My Attendance 📱
+            </h1>
+            <p className="text-slate-500 font-medium">Mark your presence and check your history</p>
+          </motion.div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-3 gap-6 mb-8">
-          <Card className="p-6">
-            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center mb-3 shadow-lg">
-              <CheckCircle size={22} className="text-white" />
-            </div>
-            <div className="text-sm font-bold text-slate-500 mb-1">Present</div>
-            <div className="text-3xl font-black text-slate-900">{presentCount}</div>
-          </Card>
-          <Card className="p-6">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-3 shadow-lg">
-              <TrendingUp size={22} className="text-white" />
-            </div>
-            <div className="text-sm font-bold text-slate-500 mb-1">Rate</div>
-            <div className="text-3xl font-black text-slate-900">{attendance.length > 0 ? `${attendanceRate}%` : '—'}</div>
-          </Card>
-          <Card className="p-6">
-            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center mb-3 shadow-lg">
-              <Calendar size={22} className="text-white" />
-            </div>
-            <div className="text-sm font-bold text-slate-500 mb-1">Total</div>
-            <div className="text-3xl font-black text-slate-900">{attendance.length}</div>
-          </Card>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-3 mb-6">
-          {[
-            { id: 'mark', label: '📱 Mark Attendance' },
-            { id: 'history', label: '📋 History' }
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-3 rounded-xl font-bold transition-all ${activeTab === tab.id ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-700 hover:bg-slate-50 border-2 border-slate-200'}`}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {activeTab === 'mark' && (
-          <div className="grid lg:grid-cols-2 gap-6">
-            <Card className="p-6">
-              <h2 className="text-xl font-black text-slate-900 mb-5">Mark Your Attendance</h2>
-
-              {markSuccess && (
-                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-                  className="p-4 mb-4 bg-green-50 border-2 border-green-200 rounded-xl flex items-center gap-3">
-                  <CheckCircle className="text-green-600" size={24} />
-                  <div>
-                    <p className="text-green-700 font-bold">Marked Successfully! 🎉</p>
-                    {successDetails && <p className="text-green-600 text-sm">{successDetails}</p>}
-                  </div>
-                </motion.div>
-              )}
-
-              {markError && (
-                <div className="p-4 mb-4 bg-red-50 border-2 border-red-200 rounded-xl flex items-center gap-3">
-                  <AlertCircle className="text-red-600 shrink-0" size={20} />
-                  <p className="text-red-700 font-semibold">{markError}</p>
-                </div>
-              )}
-
-              {/* ── Option 1: Scan QR ── */}
-              <button
-                onClick={() => setShowScanner(true)}
-                className="w-full mb-5 p-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-2xl flex items-center justify-center gap-3 font-black text-lg transition-all shadow-lg hover:shadow-xl"
-              >
-                <Camera size={24} />
-                Scan QR Code
-              </button>
-
-              <div className="relative mb-5">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t-2 border-dashed border-slate-200" /></div>
-                <div className="relative flex justify-center"><span className="px-3 bg-white text-slate-400 text-sm font-bold">OR enter OTP manually</span></div>
-              </div>
-
-              {/* ── Option 2: OTP ONLY ── */}
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-bold text-slate-700 mb-2 block">6-Digit OTP</label>
-                  <input 
-                    type="text" 
-                    value={otpInput} 
-                    onChange={e => { setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6)); setMarkError(''); }}
-                    placeholder="Enter OTP (e.g., 123456)" 
-                    maxLength={6}
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl font-medium focus:outline-none focus:border-blue-500 tracking-widest text-center text-2xl font-black" 
-                  />
-                  <p className="text-xs text-slate-500 mt-1">Enter the code shown on the faculty screen.</p>
-                </div>
-
-                <Button variant="primary" fullWidth icon={CheckCircle} onClick={handleMarkAttendance} disabled={marking}>
-                  {marking ? 'Verifying...' : 'Submit OTP'}
-                </Button>
-              </div>
-            </Card>
-
-            <Card className="p-6 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
-              <h3 className="text-lg font-black text-slate-900 mb-4 flex items-center gap-2">
-                <Shield size={20} className="text-blue-600" />
-                Troubleshooting
-              </h3>
-              <div className="space-y-3 text-sm text-slate-700">
-                <p><strong>Camera not working?</strong><br/>Make sure you are using a secure connection (HTTPS) or localhost. Browsers block cameras on insecure IP addresses.</p>
-                <p><strong>OTP Invalid?</strong><br/>Ask your faculty to refresh their screen. OTPs expire after 10-15 minutes.</p>
-              </div>
-            </Card>
+          <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 shadow-sm">
+            <TabButton active={activeTab === 'mark'} label="Mark Now" onClick={() => setActiveTab('mark')} />
+            <TabButton active={activeTab === 'history'} label="My History" onClick={() => setActiveTab('history')} />
           </div>
-        )}
+        </div>
 
-        {/* QR Scanner Modal */}
-        <AnimatePresence>
-          {showScanner && (
-            <QRScanner
-              onClose={() => setShowScanner(false)}
-              onScanSuccess={() => {
-                setShowScanner(false);
-                setMarkSuccess(true);
-                fetchAttendance();
-                setTimeout(() => setMarkSuccess(false), 5000);
-              }}
-            />
+        {/* Simple Stats Hub */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
+          <SimpleStat label="Days Present" value={dashboardStats.present} color="text-green-600" bg="bg-green-50" icon={CheckCircle} />
+          <SimpleStat label="Attendance Rate" value={`${dashboardStats.rate}%`} color="text-blue-600" bg="bg-blue-50" icon={TrendingUp} />
+          <SimpleStat label="Total Classes" value={dashboardStats.total} color="text-purple-600" bg="bg-purple-50" icon={BookOpen} />
+        </div>
+
+        <AnimatePresence mode="wait">
+          {activeTab === 'mark' ? (
+            <motion.div key="mark" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+               <div className="grid lg:grid-cols-12 gap-8">
+                  
+                  {/* Mark Presence Section */}
+                  <div className="lg:col-span-8">
+                    <Card className="p-10 border-none shadow-xl bg-white">
+                      <h2 className="text-2xl font-black text-slate-900 mb-8">Enter Class Code</h2>
+                      
+                      {markSuccess && (
+                        <div className="p-5 mb-8 bg-green-50 border-2 border-green-100 rounded-2xl flex items-center gap-4 text-green-700 font-bold">
+                          <CheckSquare size={24} /> {successDetails}
+                        </div>
+                      )}
+
+                      <div className="grid md:grid-cols-2 gap-10">
+                         <button onClick={() => setShowScanner(true)} className="p-10 bg-slate-900 rounded-[32px] text-white flex flex-col items-center justify-center gap-4 shadow-xl hover:scale-[1.02] transition-all group">
+                            <div className="p-6 bg-blue-600 rounded-2xl group-hover:rotate-12 transition-transform shadow-lg shadow-blue-500/30">
+                               <Camera size={40} />
+                            </div>
+                            <span className="text-sm font-black uppercase tracking-widest">Open Scanner</span>
+                         </button>
+
+                         <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-200 flex flex-col justify-center">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4 text-center">Or enter the 6-digit OTP</label>
+                            <input 
+                              type="text" value={otpInput} 
+                              onChange={e => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                              placeholder="000000"
+                              className="w-full bg-white border-2 border-slate-200 p-6 rounded-2xl text-center text-4xl font-black tracking-[0.2em] outline-none focus:border-blue-500 transition-all mb-6 shadow-inner"
+                            />
+                            <Button variant="primary" fullWidth size="lg" onClick={handleMarkWithOTP} disabled={marking}>
+                               {marking ? 'Checking...' : 'Mark Present'}
+                            </Button>
+                         </div>
+                      </div>
+
+                      {markError && (
+                        <div className="mt-8 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 font-bold text-sm">
+                           <AlertCircle size={18} /> {markError}
+                        </div>
+                      )}
+                    </Card>
+                  </div>
+
+                  {/* Help Sidebar */}
+                  <div className="lg:col-span-4">
+                    <Card className="p-8 bg-white border-none shadow-lg h-full">
+                       <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
+                        <Info size={20} className="text-blue-600" />
+                        Help Guide
+                       </h3>
+                       <div className="space-y-8">
+                          <HelpStep n="1" t="Ask for Code" d="Your teacher will show a QR code or a 6-digit number on the screen." />
+                          <HelpStep n="2" t="Camera or OTP" d="Use the 'Open Scanner' button or type the 6 numbers manually." />
+                          <HelpStep n="3" t="Confirmation" d="Wait for the success message to ensure your seat is logged." />
+                       </div>
+                    </Card>
+                  </div>
+               </div>
+            </motion.div>
+          ) : (
+            <motion.div key="history" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid lg:grid-cols-12 gap-8">
+              
+              {/* Calendar Display */}
+              <div className="lg:col-span-8">
+                <Card className="p-8 border-none shadow-xl bg-white overflow-hidden">
+                  <div className="flex justify-between items-center mb-8">
+                    <h2 className="text-2xl font-black text-slate-900">My History</h2>
+                    <div className="flex gap-4">
+                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-sm" /><span className="text-[10px] font-black text-slate-400 uppercase">Present</span></div>
+                      <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm" /><span className="text-[10px] font-black text-slate-400 uppercase">Absent</span></div>
+                    </div>
+                  </div>
+                  <Calendar 
+                    onChange={setSelectedDate}
+                    value={selectedDate}
+                    tileClassName={getTileClass}
+                    className="attendance-calendar"
+                  />
+                </Card>
+              </div>
+
+              {/* Sidebar Details */}
+              <div className="lg:col-span-4 space-y-6">
+                 <Card className="p-8 border-none shadow-xl bg-white min-h-[400px]">
+                    <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
+                      <Clock size={18} className="text-blue-600" />
+                      Details for {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </h3>
+                    <div className="space-y-3">
+                      {classesThisDay.length === 0 ? (
+                        <div className="text-center py-12">
+                          <AlertCircle className="mx-auto text-slate-200 mb-3" size={40} />
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No classes found</p>
+                        </div>
+                      ) : (
+                        classesThisDay.map((rec, i) => (
+                          <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center group hover:bg-slate-900 transition-all">
+                             <div>
+                                <p className="font-black text-slate-900 text-[13px] uppercase tracking-tighter group-hover:text-white">{rec.name}</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{rec.code} • {new Date(rec.markedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                             </div>
+                             <div className="p-2 bg-green-500 text-white rounded-xl shadow-md group-hover:scale-110 transition-transform">
+                                <ShieldCheck size={16} />
+                             </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                 </Card>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
 
-        {activeTab === 'history' && (
-          <div>
-            {attendance.length === 0 ? (
-              <Card className="p-12 text-center">
-                <Clock size={48} className="text-slate-300 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-slate-900 mb-2">No Records</h3>
-                <p className="text-slate-600">You haven't marked any attendance yet.</p>
-              </Card>
-            ) : (
-              <Card className="overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-slate-50 border-b-2 border-slate-100">
-                        <th className="text-left px-6 py-4 text-sm font-black text-slate-700">Date</th>
-                        <th className="text-left px-6 py-4 text-sm font-black text-slate-700">Class</th>
-                        <th className="text-left px-6 py-4 text-sm font-black text-slate-700">Status</th>
-                        <th className="text-left px-6 py-4 text-sm font-black text-slate-700">Marked At</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {attendance.map((record, i) => (
-                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-4 text-sm font-semibold text-slate-700">
-                            {record.date || record.markedAt?.split('T')[0] || '—'}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-600">{record.classId}</td>
-                          <td className="px-6 py-4">
-                            <span className={`text-xs font-bold px-3 py-1 rounded-full ${record.status === 'present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                              {record.status?.toUpperCase()}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-500">
-                            {record.markedAt ? new Date(record.markedAt).toLocaleTimeString() : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            )}
-          </div>
-        )}
+        {/* Scanner Modal */}
+        <AnimatePresence>
+          {showScanner && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/95 backdrop-blur-xl">
+               <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="relative w-full max-w-xl p-4">
+                  <button onClick={() => setShowScanner(false)} className="absolute -top-12 right-0 text-white/70 hover:text-white transition-all"><X size={32} /></button>
+                  <div className="bg-white rounded-[40px] p-2 overflow-hidden shadow-2xl border-4 border-white/20">
+                     <QRScanner
+                       onClose={() => setShowScanner(false)}
+                       onScanSuccess={() => {
+                         setShowScanner(false);
+                         setMarkSuccess(true);
+                         fetchMyAttendance();
+                         setTimeout(() => setMarkSuccess(false), 5000);
+                       }}
+                     />
+                  </div>
+               </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
 };
+
+// HELPER COMPONENTS
+const SimpleStat = ({ label, value, color, bg, icon: Icon }) => (
+  <Card className="p-8 border-none shadow-lg bg-white flex items-center gap-6 group hover:scale-[1.02] transition-all">
+    <div className={`w-14 h-14 rounded-2xl ${bg} ${color} flex items-center justify-center shrink-0 group-hover:rotate-12 transition-transform shadow-inner`}><Icon size={28} /></div>
+    <div>
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{label}</p>
+      <p className="text-3xl font-black text-slate-900 leading-none">{value}</p>
+    </div>
+  </Card>
+);
+
+const TabButton = ({ active, label, onClick }) => (
+  <button onClick={onClick} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${active ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-700'}`}>
+    {label}
+  </button>
+);
+
+const HelpStep = ({ n, t, d }) => (
+  <div className="flex gap-5">
+    <span className="text-2xl font-black text-blue-100">{n}</span>
+    <div>
+      <p className="font-black text-xs text-slate-900 uppercase tracking-widest mb-1">{t}</p>
+      <p className="text-[10px] font-bold text-slate-400 leading-relaxed max-w-[200px]">{d}</p>
+    </div>
+  </div>
+);
 
 export default Attendance;

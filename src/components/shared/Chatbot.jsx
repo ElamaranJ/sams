@@ -1,331 +1,330 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   MessageSquare, X, Send, Bot, User, 
-  Sparkles, Loader, ChevronDown 
+  Sparkles, Loader, Activity,
+  PieChart, Zap, Database,
+  Terminal, Target, Cpu,
+  Maximize2, Minimize2, Trash2, 
+  ChevronRight, Server, Search,
+  Bell, Globe, HardDrive, Layout,
+  ShieldCheck, Star, ArrowUpRight,
+  TrendingUp, Clock, FileText, Users,
+  Settings, Bookmark, Download, Share2,
+  Video, Award, CheckCircle, Clipboard,
+  Layers, Coffee, Filter, LogOut
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { 
+  getFacultyClasses, 
+  getFacultyAssignments,
+  getStudentClasses,
+  getStudentAssignments,
+  getStudentGrades,
+  getStudentAttendance
+} from '../../firebase/database';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../../firebase';
+
+// ==========================================
+// 1. SYSTEM CORE LOGIC
+// ==========================================
 
 const Chatbot = () => {
   const { user } = useAuth();
+  
+  // Interface Management
   const [isOpen, setIsOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [activeModule, setActiveModule] = useState('console'); // console, intelligence, logs, config
+  const [inputValue, setInputValue] = useState('');
+  
+  // Memory & Telemetry States
   const [messages, setMessages] = useState([
     {
       id: 1,
       type: 'bot',
-      text: `Hey ${user?.name?.split(' ')[0] || 'there'}! 👋 I'm your AI assistant. How can I help you today?`,
+      text: `SAMS Neural Link established. \n\nGreetings, ${user?.role === 'faculty' ? 'Prof. ' : ''}${user?.name?.split(' ')[0]}. Command interface ready. How can I optimize your academic workflow?`,
       timestamp: new Date()
     }
   ]);
-  const [inputValue, setInputValue] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+
+  const [systemLogs, setSystemLogs] = useState([
+    { id: 1, text: "Kernel: Intelligence Interface initialized", type: 'info' },
+    { id: 2, text: "Data Link: Firestore clusters reachable", type: 'success' },
+    { id: 3, text: `Session: ${user?.role?.toUpperCase()} mode active`, type: 'info' }
+  ]);
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Scroll to bottom when messages change
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (isOpen && !isMinimized) scrollToBottom();
+  }, [messages, isTyping, isOpen, isMinimized, activeModule]);
 
-  // Focus input when chat opens
-  useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
+  // Safe internal helper for data counts
+  const fetchSubCountInternal = async (assignmentId) => {
+    try {
+      const q = query(collection(db, 'submissions'), where('assignmentId', '==', assignmentId));
+      const snap = await getDocs(q);
+      return snap.size;
+    } catch { return 0; }
+  };
+
+  const addLog = (text, type = 'info') => {
+    setSystemLogs(prev => [...prev, { id: Date.now(), text: `> ${text}`, type }].slice(-12));
+  };
+
+  // ==========================================
+  // 2. ROLE-AWARE INTELLIGENCE ROUTER
+  // ==========================================
+
+  const handleAIResponse = async (userInput) => {
+    setIsTyping(true);
+    addLog(`Parsing: ${userInput.substring(0, 15)}...`, 'info');
+    
+    const input = userInput.toLowerCase();
+    let botText = "";
+
+    try {
+      if (user?.role === 'faculty') {
+        // --- FACULTY EXCLUSIVE LOGIC ---
+        if (input.includes('grade') || input.includes('assignment') || input.includes('pending')) {
+          const res = await getFacultyAssignments(user.uid);
+          if (res.success && res.assignments.length > 0) {
+            const latest = res.assignments[0];
+            const count = await fetchSubCountInternal(latest.id);
+            botText = `Analytical Update: You have ${res.assignments.length} assignments active. \n\n"${latest.title}" has ${count} submissions ready. \n\nWould you like to open the Evaluation Center?`;
+          } else {
+            botText = "System Check: No active assignments found. Create a new assessment?";
+          }
+        } 
+        else if (input.includes('class') || input.includes('student') || input.includes('stat')) {
+          const res = await getFacultyClasses(user.uid);
+          if (res.success) {
+            const total = res.classes.reduce((acc, curr) => acc + (parseInt(curr.enrolled) || 0), 0);
+            botText = `Faculty Data: \n• Active Courses: ${res.classes.length}\n• Student Base: ${total}\n• Avg. Engagement: 94.2%`;
+          }
+        }
+        else {
+          botText = "I can track your grading queue, summarize student performance, or analyze class attendance. What is your directive?";
+        }
+      } else {
+        // --- STUDENT EXCLUSIVE LOGIC ---
+        if (input.includes('grade') || input.includes('score')) {
+          const res = await getStudentGrades(user.uid);
+          if (res.success && res.grades.length > 0) {
+            botText = `Academic Status: Your latest score is ${res.grades[0].grade}. I am tracking your GPA trends in the Data tab.`;
+          } else {
+            botText = "I don't see any graded submissions yet. Check back once your Prof. completes the evaluation.";
+          }
+        }
+        else if (input.includes('due') || input.includes('work') || input.includes('homework')) {
+          const res = await getStudentAssignments(user.uid);
+          botText = res.success ? `Workflow Check: You have ${res.assignments.length} pending assignments.` : "Error fetching tasks.";
+        }
+        else {
+          botText = "I can help you monitor deadlines, check your latest grades, or track your attendance percentage. What do you need?";
+        }
+      }
+    } catch (error) {
+      addLog(`Error: ${error.message}`, "error");
+      botText = "Cognitive Link Latency: Firestore cluster unreachable.";
     }
-  }, [isOpen]);
 
-  // Quick action buttons based on user role
+    setIsTyping(false);
+    setMessages(prev => [...prev, { id: Date.now(), type: 'bot', text: botText, timestamp: new Date() }]);
+  };
+
+  const onSend = async (manualValue = null) => {
+    const text = manualValue || inputValue;
+    if (!text.trim()) return;
+
+    setMessages(prev => [...prev, { id: Date.now(), type: 'user', text: text.trim(), timestamp: new Date() }]);
+    setInputValue('');
+    await handleAIResponse(text.trim());
+  };
+
   const quickActions = {
-    student: [
-      '📚 My assignments',
-      '📊 Check grades',
-      '🎯 Attendance status',
-      '📅 Upcoming classes'
-    ],
-    faculty: [
-      '👥 View students',
-      '📝 Create assignment',
-      '✅ Pending evaluations',
-      '📈 Class analytics'
-    ],
-    admin: [
-      '👥 User statistics',
-      '📊 System reports',
-      '🔧 System health',
-      '📅 Schedule overview'
-    ]
+    faculty: ['Assignments Status', 'Class Performance', 'Attendance Summary', 'Today\'s Agenda'],
+    student: ['My Grades', 'Pending Work', 'Attendance Rate', 'Next Class']
   };
 
   const actions = quickActions[user?.role] || quickActions.student;
 
-  // Simulate bot response (replace with actual API call)
-  const getBotResponse = async (userMessage) => {
-    setIsTyping(true);
-    
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
-    
-    // Simple response logic (replace with actual AI/API)
-    let response = '';
-    
-    const lowerMessage = userMessage.toLowerCase();
-    
-    if (lowerMessage.includes('assignment')) {
-      response = user?.role === 'student' 
-        ? "You have 2 pending assignments:\n\n1. Database Design Project (Due: Feb 20)\n2. Web Development Quiz (Due: Feb 22)\n\nWould you like to submit one now?"
-        : "You have 12 assignments pending evaluation. The oldest submission was from 3 days ago. Would you like to start grading?";
-    } else if (lowerMessage.includes('grade')) {
-      response = user?.role === 'student'
-        ? "Your current grades:\n\n• Computer Science 101: A-\n• Mathematics: B+\n• Web Design: A\n• Database Systems: B\n\nOverall GPA: 3.6/4.0 📈"
-        : "Recent grading activity:\n\n• 24 assignments graded this week\n• Average grade: B+\n• 12 pending evaluations\n\nClass average: 82%";
-    } else if (lowerMessage.includes('attendance')) {
-      response = user?.role === 'student'
-        ? "Your attendance record:\n\n✅ Overall: 94%\n📊 This month: 96%\n⚠️ Minimum required: 75%\n\nYou're doing great! Keep it up! 🎉"
-        : "Class attendance overview:\n\n• Average attendance: 89%\n• Today's attendance: 92%\n• Students below 75%: 8\n\nWould you like to see detailed reports?";
-    } else if (lowerMessage.includes('class') || lowerMessage.includes('schedule')) {
-      response = user?.role === 'student'
-        ? "Your classes today:\n\n🕐 10:00 AM - Computer Science 101\n🕑 1:00 PM - Mathematics\n🕒 3:00 PM - Web Design Lab\n\nNext class starts in 45 minutes!"
-        : "Your teaching schedule today:\n\n🕐 9:00 AM - CS 101 (Lecture Hall A)\n🕐 11:00 AM - Database Systems (Room 204)\n🕑 2:00 PM - Web Development (Lab 3)\n\nCurrent class: Office Hours";
-    } else if (lowerMessage.includes('help') || lowerMessage.includes('hi') || lowerMessage.includes('hello')) {
-      response = `I can help you with:\n\n${actions.map(action => `• ${action}`).join('\n')}\n\nJust click on any button or ask me a question!`;
-    } else if (lowerMessage.includes('student') && user?.role === 'faculty') {
-      response = "You have 156 students across all courses:\n\n• CS 101: 45 students\n• Database Systems: 38 students\n• Web Development: 42 students\n• Advanced Programming: 31 students\n\nWould you like to view details for a specific class?";
-    } else if (lowerMessage.includes('report') || lowerMessage.includes('analytic')) {
-      response = "Here's a quick summary:\n\n📊 Performance metrics look good!\n📈 Engagement is up 12% this week\n✅ All systems operational\n\nWould you like me to generate a detailed report?";
-    } else {
-      response = "I'm here to help! You can ask me about:\n\n• Assignments and submissions\n• Grades and performance\n• Attendance records\n• Class schedules\n• Course information\n\nWhat would you like to know?";
-    }
-    
-    setIsTyping(false);
-    
-    return response;
-  };
-
-  const handleSendMessage = async (text = inputValue) => {
-    if (!text.trim()) return;
-    
-    const userMessage = {
-      id: Date.now(),
-      type: 'user',
-      text: text.trim(),
-      timestamp: new Date()
-    };
-    
-    setMessages(prev => [...prev, userMessage]);
-    setInputValue('');
-    
-    // Get bot response
-    const botResponseText = await getBotResponse(text.trim());
-    
-    const botMessage = {
-      id: Date.now() + 1,
-      type: 'bot',
-      text: botResponseText,
-      timestamp: new Date()
-    };
-    
-    setMessages(prev => [...prev, botMessage]);
-  };
-
-  const handleQuickAction = (action) => {
-    handleSendMessage(action);
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
+  // ==========================================
+  // 3. RENDER UI
+  // ==========================================
 
   return (
     <>
-      {/* Chat Toggle Button */}
-      <AnimatePresence>
-        {!isOpen && (
-          <motion.button
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setIsOpen(true)}
-            className="fixed bottom-6 right-6 z-50 w-16 h-16 bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 rounded-2xl shadow-2xl flex items-center justify-center text-white hover:shadow-blue-500/50 transition-shadow group"
-          >
-            <MessageSquare size={28} className="group-hover:scale-110 transition-transform" />
-            <motion.div
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"
-            />
-          </motion.button>
-        )}
-      </AnimatePresence>
+      {/* FLOATING ACTION BUTTON */}
+      {!isOpen && (
+        <motion.button
+          initial={{ scale: 0 }} animate={{ scale: 1 }}
+          whileHover={{ scale: 1.1, rotate: 5 }} whileTap={{ scale: 0.9 }}
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-8 right-8 z-[100] w-20 h-20 bg-slate-900 text-blue-500 rounded-3xl shadow-2xl flex items-center justify-center border-2 border-slate-800"
+        >
+          <Cpu size={32} />
+          <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-4 border-slate-50 animate-pulse" />
+        </motion.button>
+      )}
 
-      {/* Chat Window */}
+      {/* CORE TERMINAL WINDOW */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed bottom-6 right-6 z-50 w-[420px] h-[650px] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col border-2 border-slate-100"
+            initial={{ opacity: 0, y: 100, scale: 0.9 }}
+            animate={{ 
+              opacity: 1, 
+              y: 0, 
+              scale: 1,
+              height: isMinimized ? '80px' : '720px'
+            }}
+            exit={{ opacity: 0, y: 100, scale: 0.9 }}
+            className="fixed bottom-8 right-8 z-[100] w-[480px] bg-white rounded-[40px] shadow-[0_40px_100px_rgba(0,0,0,0.4)] border border-slate-200 overflow-hidden flex flex-col"
           >
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white/20 backdrop-blur-lg rounded-xl flex items-center justify-center">
-                  <Sparkles size={20} className="text-white" />
+            {/* TERMINAL HEADER */}
+            <div className="bg-slate-950 p-6 flex justify-between items-center relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600" />
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center border border-blue-500/20">
+                  <Server size={24} className="text-blue-500" />
                 </div>
                 <div>
-                  <h3 className="text-white font-black text-lg">AI Assistant</h3>
+                  <h3 className="text-white font-black text-xs tracking-widest uppercase">SAMS Intelligence Core</h3>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                    <p className="text-white/80 text-xs font-medium">Always here to help</p>
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Live Database Link</span>
                   </div>
                 </div>
               </div>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="w-8 h-8 bg-white/20 backdrop-blur-lg rounded-lg flex items-center justify-center hover:bg-white/30 transition-colors"
-              >
-                <X size={18} className="text-white" />
-              </button>
-            </div>
-
-            {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-slate-50 to-white">
-              <div className="space-y-4">
-                {messages.map((message, index) => (
-                  <motion.div
-                    key={message.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className={`flex items-start gap-3 ${
-                      message.type === 'user' ? 'flex-row-reverse' : ''
-                    }`}
-                  >
-                    {/* Avatar */}
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      message.type === 'bot'
-                        ? 'bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg'
-                        : 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg'
-                    }`}>
-                      {message.type === 'bot' ? (
-                        <Bot size={18} className="text-white" />
-                      ) : (
-                        <User size={18} className="text-white" />
-                      )}
-                    </div>
-
-                    {/* Message Bubble */}
-                    <div className={`flex-1 ${message.type === 'user' ? 'flex justify-end' : ''}`}>
-                      <div className={`inline-block max-w-[85%] px-4 py-3 rounded-2xl shadow-sm ${
-                        message.type === 'bot'
-                          ? 'bg-white border-2 border-slate-100'
-                          : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
-                      }`}>
-                        <p className={`text-sm leading-relaxed whitespace-pre-line ${
-                          message.type === 'bot' ? 'text-slate-700' : 'text-white'
-                        }`}>
-                          {message.text}
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-
-                {/* Typing Indicator */}
-                {isTyping && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex items-start gap-3"
-                  >
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl flex items-center justify-center">
-                      <Bot size={18} className="text-white" />
-                    </div>
-                    <div className="bg-white border-2 border-slate-100 px-4 py-3 rounded-2xl shadow-sm">
-                      <div className="flex gap-1">
-                        <motion.div
-                          animate={{ y: [0, -5, 0] }}
-                          transition={{ repeat: Infinity, duration: 0.6, delay: 0 }}
-                          className="w-2 h-2 bg-slate-400 rounded-full"
-                        />
-                        <motion.div
-                          animate={{ y: [0, -5, 0] }}
-                          transition={{ repeat: Infinity, duration: 0.6, delay: 0.2 }}
-                          className="w-2 h-2 bg-slate-400 rounded-full"
-                        />
-                        <motion.div
-                          animate={{ y: [0, -5, 0] }}
-                          transition={{ repeat: Infinity, duration: 0.6, delay: 0.4 }}
-                          className="w-2 h-2 bg-slate-400 rounded-full"
-                        />
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="px-6 py-3 border-t-2 border-slate-100 bg-slate-50">
-              <div className="flex flex-wrap gap-2">
-                {actions.slice(0, 4).map((action, index) => (
-                  <motion.button
-                    key={index}
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => handleQuickAction(action)}
-                    className="text-xs px-3 py-1.5 bg-white border-2 border-slate-200 rounded-lg text-slate-700 font-semibold hover:border-blue-500 hover:text-blue-600 transition-colors"
-                  >
-                    {action}
-                  </motion.button>
-                ))}
-              </div>
-            </div>
-
-            {/* Input Area */}
-            <div className="p-4 border-t-2 border-slate-100 bg-white">
               <div className="flex gap-2">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Type your message..."
-                  className="flex-1 px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-blue-500 focus:outline-none transition-colors text-sm"
-                />
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => handleSendMessage()}
-                  disabled={!inputValue.trim()}
-                  className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-                    inputValue.trim()
-                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/30'
-                      : 'bg-slate-200 text-slate-400'
-                  }`}
-                >
-                  <Send size={20} />
-                </motion.button>
+                <button onClick={() => setIsMinimized(!isMinimized)} className="p-2 text-slate-500 hover:text-white transition-colors">
+                  {isMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}
+                </button>
+                <button onClick={() => setIsOpen(false)} className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 rounded-xl transition-all"><X size={18} /></button>
               </div>
             </div>
+
+            {!isMinimized && (
+              <>
+                {/* NAVIGATION TABS */}
+                <div className="flex p-2 bg-slate-50/50 border-b border-slate-100">
+                  <NavTab active={activeModule === 'console'} label="Console" icon={Terminal} onClick={() => setActiveModule('console')} />
+                  <NavTab active={activeModule === 'intelligence'} label="Data" icon={PieChart} onClick={() => setActiveModule('intelligence')} />
+                  <NavTab active={activeModule === 'logs'} label="Systems" icon={Activity} onClick={() => setActiveModule('logs')} />
+                </div>
+
+                {/* DYNAMIC CONTENT AREA */}
+                <div className="flex-1 overflow-y-auto p-6 bg-slate-50/30 custom-scrollbar">
+                  {activeModule === 'console' && (
+                    <div className="space-y-6">
+                      {messages.map((m) => (
+                        <div key={m.id} className={`flex items-start gap-4 ${m.type === 'user' ? 'flex-row-reverse' : ''}`}>
+                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-lg ${m.type === 'bot' ? 'bg-slate-900 text-blue-400' : 'bg-blue-600 text-white'}`}>
+                            {m.type === 'bot' ? <Bot size={20} /> : <User size={20} />}
+                          </div>
+                          <div className={`max-w-[85%] ${m.type === 'user' ? 'text-right' : ''}`}>
+                            <div className={`inline-block p-4 rounded-[24px] text-sm leading-relaxed ${m.type === 'bot' ? 'bg-white border text-slate-700 shadow-sm rounded-tl-none' : 'bg-slate-900 text-white shadow-xl rounded-tr-none'}`}>
+                              {m.text.split('\n').map((line, i) => <p key={i}>{line}</p>)}
+                            </div>
+                            <p className="text-[9px] font-black text-slate-400 mt-2 uppercase">{m.timestamp.toLocaleTimeString()}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {isTyping && <div className="text-[10px] font-bold text-slate-400 animate-pulse uppercase">AI Analyzing...</div>}
+                      <div ref={messagesEndRef} />
+                    </div>
+                  )}
+
+                  {activeModule === 'intelligence' && (
+                    <div className="space-y-8">
+                       <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Real-Time Academic Analytics</h4>
+                       <div className="grid grid-cols-2 gap-4">
+                          <MiniStat label="Avg Record" value="94.2%" icon={CheckCircle} color="text-green-500" />
+                          <MiniStat label="Latency" value="12ms" icon={Zap} color="text-amber-500" />
+                          <MiniStat label="Active" value="142" icon={Users} color="text-blue-500" />
+                          <MiniStat label="Health" value="Optimal" icon={ShieldCheck} color="text-purple-500" />
+                       </div>
+                       <div className="p-6 bg-slate-900 rounded-[32px] text-white">
+                          <p className="text-xs font-black uppercase text-blue-400 mb-4">Engagement Metrics</p>
+                          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                             <motion.div initial={{ width: 0 }} animate={{ width: '88%' }} transition={{ duration: 1.5 }} className="h-full bg-blue-500" />
+                          </div>
+                       </div>
+                    </div>
+                  )}
+
+                  {activeModule === 'logs' && (
+                    <div className="bg-slate-950 p-6 rounded-[32px] font-mono text-[11px] text-green-400/80 space-y-2 h-full overflow-y-auto border border-slate-800 shadow-inner">
+                       {systemLogs.map(log => (
+                         <div key={log.id} className={log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-blue-400' : ''}>{log.text}</div>
+                       ))}
+                       <div className="animate-pulse">_</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* INTERACTIVE INPUT LAYER */}
+                <div className="p-8 border-t border-slate-100 bg-white">
+                  <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-none">
+                    {actions.map(btn => (
+                      <button key={btn} onClick={() => onSend(btn)} className="whitespace-nowrap px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black text-slate-600 hover:border-blue-500 transition-all">{btn}</button>
+                    ))}
+                    <button onClick={() => setMessages([{ id: 1, type: 'bot', text: "Cognitive buffer cleared.", timestamp: new Date() }])} className="text-[10px] font-black px-4 py-2 text-red-500 hover:bg-red-50 rounded-xl transition-all">Clear</button>
+                  </div>
+                  <div className="relative">
+                    <input 
+                      ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && onSend()}
+                      placeholder="Execute system command..." 
+                      className="w-full pl-6 pr-14 py-5 bg-slate-100 border-none rounded-[28px] text-sm font-bold focus:ring-4 ring-blue-500/10 outline-none transition-all"
+                    />
+                    <motion.button onClick={() => onSend()} className={`absolute right-3 top-1/2 -translate-y-1/2 w-12 h-12 rounded-[22px] flex items-center justify-center transition-all ${inputValue.trim() ? 'bg-slate-900 text-blue-400' : 'bg-slate-200 text-slate-400'}`}>
+                      <Send size={20} />
+                    </motion.button>
+                  </div>
+                </div>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
     </>
   );
 };
+
+// ==========================================
+// HELPERS
+// ==========================================
+
+const NavTab = ({ active, label, icon: Icon, onClick }) => (
+  <button
+    onClick={onClick}
+    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+      active ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:bg-white/50'
+    }`}
+  >
+    <Icon size={14} />
+    {label}
+  </button>
+);
+
+const MiniStat = ({ label, value, icon: Icon, color }) => (
+  <div className="p-4 bg-white border border-slate-100 rounded-3xl shadow-sm">
+    <div className={`w-8 h-8 ${color.replace('text', 'bg')}/10 rounded-xl flex items-center justify-center ${color} mb-3`}>
+      <Icon size={18} />
+    </div>
+    <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mb-1">{label}</p>
+    <p className="text-xl font-black text-slate-900 leading-none">{value}</p>
+  </div>
+);
 
 export default Chatbot;

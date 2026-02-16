@@ -35,24 +35,27 @@ import ScheduleManagement from './pages/ScheduleManagement';
 
 import Navbar from './components/layout/Navbar';
 
-// Protected Route
+// Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
-// Public Route (redirect if logged in)
+// Public Route Component (redirects to dashboard if already logged in)
 const PublicRoute = ({ children }) => {
   const { isAuthenticated } = useAuth();
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
   return children;
 };
 
-// Dashboard Layout
+// ==========================================
+// MAIN DASHBOARD LAYOUT ARCHITECTURE
+// ==========================================
 const DashboardLayout = () => {
   const { user } = useAuth();
   const [activePage, setActivePage] = useState('home');
 
+  // Unified Menu Configuration
   const menuItems = {
     student: [
       { icon: Home, label: 'Dashboard', page: 'home' },
@@ -83,18 +86,25 @@ const DashboardLayout = () => {
 
   const items = menuItems[user?.role] || menuItems.student;
 
+  // Render Logic for Home Dashboards
   const renderHomePage = () => {
     switch (user?.role) {
-      case 'faculty': return <FacultyDashboard />;
-      case 'student': return <StudentDashboard />;
-      case 'admin': return <AdminDashboard />;
-      default: return <StudentDashboard />;
+      case 'faculty': 
+        return <FacultyDashboard onNavigate={setActivePage} />;
+      case 'student': 
+        // FIX: Enabled onNavigate for Student Dashboard to make buttons work
+        return <StudentDashboard onNavigate={setActivePage} />; 
+      case 'admin': 
+        return <AdminDashboard onNavigate={setActivePage} />;
+      default: 
+        return <StudentDashboard onNavigate={setActivePage} />;
     }
   };
 
+  // Visual Identity Logic
   const roleColor = user?.role === 'admin' ? 'from-red-500 to-red-600'
     : user?.role === 'faculty' ? 'from-blue-500 to-purple-600'
-    : 'from-green-500 to-emerald-600';
+    : 'from-blue-600 to-indigo-600'; // Synced Student color to professional blue
 
   const roleLabel = user?.role === 'admin' ? '🎛️ Admin'
     : user?.role === 'faculty' ? '👨‍🏫 Faculty'
@@ -104,16 +114,15 @@ const DashboardLayout = () => {
     <div className="min-h-screen bg-slate-50">
       <Navbar onNavigate={setActivePage} />
       
-      {/* Sidebar */}
+      {/* GLOBAL SIDEBAR */}
       <div className="fixed left-0 top-16 bottom-0 w-64 bg-white border-r-2 border-slate-100 overflow-y-auto z-40">
-        {/* User Info in Sidebar */}
         <div className="p-4 border-b border-slate-100">
-          <div className={`bg-gradient-to-br ${roleColor} rounded-xl p-4 text-white`}>
+          <div className={`bg-gradient-to-br ${roleColor} rounded-xl p-4 text-white shadow-lg`}>
             <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center mb-2 font-black text-lg">
               {user?.name?.charAt(0) || '?'}
             </div>
             <div className="font-bold text-sm truncate">{user?.name}</div>
-            <div className="text-xs text-white/80">{roleLabel}</div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-white/80">{roleLabel}</div>
           </div>
         </div>
 
@@ -125,66 +134,83 @@ const DashboardLayout = () => {
                 key={index}
                 onClick={() => setActivePage(item.page)}
                 whileHover={{ x: 4 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all ${
-                  isActive ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-700 hover:bg-slate-50'
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-black text-sm transition-all ${
+                  isActive ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <item.icon size={20} />
+                <item.icon size={20} className={isActive ? 'text-blue-400' : ''} />
                 <span>{item.label}</span>
               </motion.button>
             );
           })}
         </div>
 
-        {/* Profile & Settings at bottom */}
         <div className="p-4 border-t border-slate-100 space-y-1">
           <motion.button
             onClick={() => setActivePage('profile')}
             whileHover={{ x: 4 }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all ${
-              activePage === 'profile' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-700 hover:bg-slate-50'
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-black text-sm transition-all ${
+              activePage === 'profile' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'
             }`}
           >
             <GraduationCap size={20} />
-            <span>Profile</span>
+            <span>Academic Profile</span>
           </motion.button>
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* DYNAMIC VIEWPORT */}
       <div className="ml-64 pt-16">
         {activePage === 'home' && renderHomePage()}
         
-        {/* Student Pages */}
-        {user?.role === 'student' && activePage === 'assignments' && <AssignmentUpload />}
-        {user?.role === 'student' && activePage === 'attendance' && <Attendance />}
+        {/* SHARED NAVIGABLE VIEWS */}
+        {activePage === 'classes' && (
+           user?.role === 'faculty' 
+            ? <FacultyClasses onNavigate={setActivePage} /> 
+            : <Classes onNavigate={setActivePage} />
+        )}
         
-        {/* Faculty Pages */}
-        {user?.role === 'faculty' && activePage === 'create-assignment' && <AssignmentCreate />}
-        {user?.role === 'faculty' && activePage === 'evaluate' && <AssignmentEvaluation />}
-        {user?.role === 'faculty' && activePage === 'generate-qr' && <AttendanceGenerate />}
+        {activePage === 'assignments' && (
+           user?.role === 'student' 
+            ? <AssignmentUpload onNavigate={setActivePage} /> 
+            : <AssignmentEvaluation onNavigate={setActivePage} />
+        )}
+
+        {activePage === 'attendance' && <Attendance onNavigate={setActivePage} />}
         
-        {/* Common Pages */}
-        {activePage === 'classes' && user?.role === 'faculty' && <FacultyClasses />}
-        {activePage === 'classes' && user?.role !== 'faculty' && <Classes />}
-        {activePage === 'calendar' && <CalendarPage />}
-        {activePage === 'grades' && <Grades />}
-        {activePage === 'students' && <Students />}
-        {activePage === 'reports' && <Reports />}
-        {activePage === 'users' && user?.role === 'admin' && <UserManagement />}
-        {activePage === 'courses' && user?.role === 'admin' && <CourseManagement />}
-        {activePage === 'schedule' && user?.role === 'admin' && <ScheduleManagement />}
-        {activePage === 'settings' && <SettingsPage />}
-        {activePage === 'profile' && <Profile />}
+        {/* FACULTY EXCLUSIVE VIEWS */}
+        {user?.role === 'faculty' && (
+          <>
+            {activePage === 'create-assignment' && <AssignmentCreate onNavigate={setActivePage} />}
+            {activePage === 'evaluate' && <AssignmentEvaluation onNavigate={setActivePage} />}
+            {activePage === 'generate-qr' && <AttendanceGenerate onNavigate={setActivePage} />}
+            {activePage === 'students' && <Students onNavigate={setActivePage} />}
+          </>
+        )}
+
+        {/* ADMIN EXCLUSIVE VIEWS */}
+        {user?.role === 'admin' && (
+          <>
+            {activePage === 'users' && <UserManagement onNavigate={setActivePage} />}
+            {activePage === 'courses' && <CourseManagement onNavigate={setActivePage} />}
+            {activePage === 'schedule' && <ScheduleManagement onNavigate={setActivePage} />}
+          </>
+        )}
+
+        {/* UTILITY VIEWS */}
+        {activePage === 'calendar' && <CalendarPage onNavigate={setActivePage} />}
+        {activePage === 'grades' && <Grades onNavigate={setActivePage} />}
+        {activePage === 'reports' && <Reports onNavigate={setActivePage} />}
+        {activePage === 'settings' && <SettingsPage onNavigate={setActivePage} />}
+        {activePage === 'profile' && <Profile onNavigate={setActivePage} />}
       </div>
     </div>
   );
 };
 
-// Main App
 function App() {
   useEffect(() => {
-    console.log('Firebase connected:', !!auth, !!db);
+    console.log('SAMS System Core Initialized:', !!auth, !!db);
   }, []);
 
   return (
