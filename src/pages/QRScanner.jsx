@@ -1,28 +1,28 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { QrCode, Camera, X, Check, AlertCircle, Loader, Shield } from 'lucide-react';
+import { QrCode, X, Check, AlertCircle, Loader, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { markAttendanceViaQR } from '../firebase/database';
 
-/**
- * QRScanner — uses jsQR (loaded from CDN) to decode real QR codes from the camera.
- * On success it calls markAttendanceViaQR in Firebase.
- */
 const QRScanner = ({ onClose, onScanSuccess }) => {
   const { user } = useAuth();
-  const [phase, setPhase]         = useState('idle');
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+
+  const [phase, setPhase] = useState('idle');
   const [statusMsg, setStatusMsg] = useState('');
   const [successInfo, setSuccessInfo] = useState(null);
   const [cameraError, setCameraError] = useState('');
+  const [isMirrored, setIsMirrored] = useState(false); // To handle laptop mirroring
 
-  const videoRef   = useRef(null);
-  const canvasRef  = useRef(null);
-  const streamRef  = useRef(null);
-  const rafRef     = useRef(null);
-  const jsQRRef    = useRef(null);
-  const didMark    = useRef(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const rafRef = useRef(null);
+  const jsQRRef = useRef(null);
+  const didMark = useRef(false);
 
-  // Load jsQR from CDN once
+  // 1. Load jsQR
   useEffect(() => {
     if (window.jsQR) { jsQRRef.current = window.jsQR; return; }
     const script = document.createElement('script');
@@ -41,18 +41,27 @@ const QRScanner = ({ onClose, onScanSuccess }) => {
     setPhase('starting');
     setCameraError('');
     didMark.current = false;
+
     try {
+      // Laptop webcams work best with specific resolution constraints
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: { 
+            facingMode: 'user', 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 } 
+        }
       });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play().catch(e => console.error(e));
+          setPhase('scanning');
+        };
       }
-      setPhase('scanning');
-    } catch {
-      setCameraError('Camera access denied. Please allow camera permissions and try again.');
+    } catch (err) {
+      console.error(err);
+      setCameraError('Camera not found or permission denied.');
       setPhase('error');
     }
   }, []);
@@ -62,70 +71,106 @@ const QRScanner = ({ onClose, onScanSuccess }) => {
     return () => stopCamera();
   }, [startCamera, stopCamera]);
 
-  // QR scan loop
+  // 2. The Scanning Loop (Now with VISUAL DEBUGGING)
   useEffect(() => {
     if (phase !== 'scanning') return;
+
     const scan = () => {
       if (didMark.current) return;
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      if (!video || !canvas || !jsQRRef.current || video.readyState < 2) {
+
+      if (!video || !canvas || !jsQRRef.current) {
         rafRef.current = requestAnimationFrame(scan);
         return;
       }
-      canvas.width  = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const result  = jsQRRef.current(imgData.data, imgData.width, imgData.height);
-      if (result?.data) {
-        handleQRData(result.data);
-      } else {
-        rafRef.current = requestAnimationFrame(scan);
+
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw video frame to canvas
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Get image data
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Try to find QR
+        const code = jsQRRef.current(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "dontInvert",
+        });
+
+        if (code) {
+          // --- VISUAL DEBUGGING: DRAW RED BOX AROUND DETECTED QR ---
+          const color = "#FF3B58";
+          ctx.beginPath();
+          ctx.lineWidth = 5;
+          ctx.strokeStyle = color;
+          ctx.moveTo(code.location.topLeftCorner.x, code.location.topLeftCorner.y);
+          ctx.lineTo(code.location.topRightCorner.x, code.location.topRightCorner.y);
+          ctx.lineTo(code.location.bottomRightCorner.x, code.location.bottomRightCorner.y);
+          ctx.lineTo(code.location.bottomLeftCorner.x, code.location.bottomLeftCorner.y);
+          ctx.lineTo(code.location.topLeftCorner.x, code.location.topLeftCorner.y);
+          ctx.stroke();
+          // -------------------------------------------------------
+
+          // If we found a code, process it
+          if (code.data) {
+             handleQRData(code.data);
+             return; // Stop scanning loop
+          }
+        }
       }
+      rafRef.current = requestAnimationFrame(scan);
     };
+
     rafRef.current = requestAnimationFrame(scan);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
   const handleQRData = async (raw) => {
     if (didMark.current) return;
     didMark.current = true;
-    stopCamera();
+    
+    // Don't stop camera immediately so user sees the red box!
+    // stopCamera(); 
+    
     setPhase('processing');
-    setStatusMsg('QR detected — verifying session…');
+    setStatusMsg('Processing QR...');
 
     try {
       let payload;
       try { payload = JSON.parse(raw); } catch {
-        setStatusMsg('Invalid QR — not a SAMS attendance QR code.');
+        setStatusMsg('Invalid QR Format (Not JSON)');
         setPhase('error'); return;
       }
+
       if (!payload?.sessionId) {
-        setStatusMsg('QR does not contain a valid session ID.');
+        setStatusMsg('QR missing Session ID');
         setPhase('error'); return;
       }
-      if (!user?.uid) {
-        setStatusMsg('You must be logged in to mark attendance.');
-        setPhase('error'); return;
-      }
-      const result = await markAttendanceViaQR(payload.sessionId, user.uid);
+
+      const result = await markAttendanceViaQR(payload.sessionId, userRef.current.uid);
+
       if (result.success) {
         setSuccessInfo({
-          studentName: result.studentName,
-          className: payload.courseName || result.className || payload.courseCode,
+          studentName: result.studentName || 'Student',
+          className: payload.courseName || result.className,
           markedAt: new Date().toLocaleTimeString(),
         });
         setPhase('success');
-        setTimeout(() => onScanSuccess?.(payload), 2500);
+        stopCamera(); // Now stop it
+        setTimeout(() => {
+            if (onScanSuccess) onScanSuccess(payload);
+            else onClose();
+        }, 2500);
       } else {
-        setStatusMsg(result.error || 'Failed to mark attendance.');
+        setStatusMsg(result.error || 'Failed to mark.');
         setPhase('error');
       }
     } catch (err) {
-      setStatusMsg('Unexpected error: ' + err.message);
+      setStatusMsg('Error: ' + err.message);
       setPhase('error');
     }
   };
@@ -140,7 +185,7 @@ const QRScanner = ({ onClose, onScanSuccess }) => {
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <motion.div
@@ -148,103 +193,69 @@ const QRScanner = ({ onClose, onScanSuccess }) => {
         onClick={e => e.stopPropagation()}
         className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden"
       >
-        {/* Header */}
-        <div className="relative bg-gradient-to-r from-slate-900 to-slate-700 text-white p-5">
-          <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-xl transition-colors">
-            <X size={22} />
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center"><QrCode size={26} /></div>
-            <div>
-              <h2 className="text-xl font-black">Scan Attendance QR</h2>
-              <p className="text-slate-300 text-sm">Point your camera at the faculty's QR code</p>
-            </div>
-          </div>
+        <div className="relative bg-slate-900 text-white p-5 flex items-center justify-between">
+            <h2 className="font-bold flex items-center gap-2"><QrCode /> Scan QR</h2>
+            <button onClick={onClose}><X /></button>
         </div>
 
-        <div className="p-5">
+        <div className="p-6">
           <AnimatePresence mode="wait">
-
-            {(phase === 'starting' || phase === 'scanning') && (
-              <motion.div key="scan" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <div className="relative bg-black rounded-2xl overflow-hidden aspect-video mb-4">
-                  <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-6 left-6 w-16 h-16 border-t-4 border-l-4 border-blue-400 rounded-tl-xl" />
-                    <div className="absolute top-6 right-6 w-16 h-16 border-t-4 border-r-4 border-blue-400 rounded-tr-xl" />
-                    <div className="absolute bottom-6 left-6 w-16 h-16 border-b-4 border-l-4 border-blue-400 rounded-bl-xl" />
-                    <div className="absolute bottom-6 right-6 w-16 h-16 border-b-4 border-r-4 border-blue-400 rounded-br-xl" />
-                  </div>
-                  {phase === 'scanning' && (
-                    <motion.div
-                      animate={{ top: ['8%', '88%'] }}
-                      transition={{ repeat: Infinity, duration: 2, ease: 'linear' }}
-                      className="absolute left-4 right-4 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent"
-                      style={{ boxShadow: '0 0 12px rgba(96,165,250,0.9)' }}
-                    />
-                  )}
-                  {phase === 'starting' && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                      <div className="text-center text-white">
-                        <Loader className="animate-spin w-10 h-10 mx-auto mb-3" />
-                        <p className="font-semibold">Starting camera…</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <canvas ref={canvasRef} className="hidden" />
-                <div className="bg-blue-50 rounded-xl p-4 text-sm text-slate-700">
-                  <p className="font-bold text-blue-800 mb-1 flex items-center gap-1.5"><Shield size={14} /> Tips</p>
-                  <ul className="space-y-0.5 text-slate-600">
-                    <li>• Hold device steady with good lighting</li>
-                    <li>• Keep the full QR code inside the blue corners</li>
-                    <li>• Stay 20–40 cm from the screen</li>
-                  </ul>
-                </div>
+            {phase === 'error' && (
+              <motion.div key="err" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
+                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
+                <h3 className="font-bold text-lg mb-2">Scan Failed</h3>
+                <p className="text-red-600 mb-4">{statusMsg || cameraError}</p>
+                <button onClick={retry} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold">Try Again</button>
               </motion.div>
             )}
 
-            {phase === 'processing' && (
-              <motion.div key="proc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="py-16 text-center">
-                <div className="w-20 h-20 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-5" />
-                <p className="text-lg font-black text-slate-900 mb-1">Marking Attendance…</p>
-                <p className="text-slate-500 text-sm">{statusMsg}</p>
+            {(phase === 'starting' || phase === 'scanning' || phase === 'processing') && (
+              <motion.div key="cam" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <div className="relative bg-black rounded-xl overflow-hidden aspect-video mb-4">
+                  {/* The Video Element (Hidden but active) */}
+                  <video 
+                    ref={videoRef} 
+                    className="absolute inset-0 w-full h-full object-cover" 
+                    style={{ transform: isMirrored ? 'scaleX(-1)' : 'none' }} 
+                    playsInline muted 
+                  />
+                  
+                  {/* The Canvas (This is what we actually see with the Red Box) */}
+                  <canvas 
+                    ref={canvasRef} 
+                    className="absolute inset-0 w-full h-full object-contain"
+                    style={{ transform: isMirrored ? 'scaleX(-1)' : 'none' }} 
+                  />
+
+                  {phase === 'starting' && <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white"><Loader className="animate-spin" /></div>}
+                  
+                  {phase === 'processing' && (
+                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white">
+                        <Loader className="animate-spin mb-2" size={40}/>
+                        <span className="font-bold">Marking Attendance...</span>
+                     </div>
+                  )}
+                </div>
+
+                <div className="flex justify-between items-center">
+                    <p className="text-sm text-slate-500">Hold QR code steady in front of camera</p>
+                    <button 
+                        onClick={() => setIsMirrored(!isMirrored)}
+                        className="text-xs flex items-center gap-1 bg-slate-100 px-3 py-1 rounded-full hover:bg-slate-200"
+                    >
+                        <RefreshCw size={12}/> {isMirrored ? 'Un-mirror' : 'Mirror Cam'}
+                    </button>
+                </div>
               </motion.div>
             )}
 
             {phase === 'success' && (
-              <motion.div key="ok" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0 }} className="py-10 text-center">
-                <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 0.5 }}
-                  className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-5 shadow-lg">
-                  <Check size={44} className="text-white" />
-                </motion.div>
-                <h3 className="text-2xl font-black text-slate-900 mb-1">Attendance Marked! 🎉</h3>
-                {successInfo && (
-                  <div className="mt-5 bg-green-50 border-2 border-green-200 rounded-2xl p-5 text-left space-y-2">
-                    {[['Student', successInfo.studentName], ['Class', successInfo.className], ['Time', successInfo.markedAt]].map(([label, val]) => (
-                      <div key={label} className="flex justify-between text-sm">
-                        <span className="text-slate-500 font-semibold">{label}</span>
-                        <span className="font-black text-slate-900">{val}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <motion.div key="suc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-6">
+                <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4"><Check size={40} /></div>
+                <h3 className="font-black text-2xl text-slate-900">Marked!</h3>
+                <p className="text-slate-600 mt-2">{successInfo?.className}</p>
               </motion.div>
             )}
-
-            {phase === 'error' && (
-              <motion.div key="err" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0 }} className="py-10 text-center">
-                <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-5">
-                  <AlertCircle size={44} className="text-red-500" />
-                </div>
-                <h3 className="text-2xl font-black text-slate-900 mb-2">Scan Failed</h3>
-                <p className="text-red-600 font-semibold mb-6 px-4">{cameraError || statusMsg}</p>
-                <button onClick={retry} className="px-8 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors">
-                  Try Again
-                </button>
-              </motion.div>
-            )}
-
           </AnimatePresence>
         </div>
       </motion.div>
