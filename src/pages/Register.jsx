@@ -7,37 +7,68 @@ import Card from '../components/shared/GlassCard';
 import { useAuth } from '../context/AuthContext';
 
 const Register = () => {
-  const { login } = useAuth();
+  const { register } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ 
     name: '',
     email: '', 
     password: '', 
     confirmPassword: '',
-    role: 'student' 
+    role: 'student',
+    department: '',
+    studentId: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleRegister = () => {
+  const handleRegister = async (e) => {
+    e.preventDefault();
     setError('');
+    setLoading(true);
     
+    // Validation
     if (!formData.name || !formData.email || !formData.password) {
       setError('Please fill in all fields');
+      setLoading(false);
+      return;
+    }
+    
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters');
+      setLoading(false);
       return;
     }
     
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
+      setLoading(false);
       return;
     }
-    
-    login({ 
-      name: formData.name,
-      email: formData.email,
-      role: formData.role,
-    });
-    navigate('/dashboard');
+
+    try {
+      const userData = {
+        name: formData.name,
+        role: formData.role,
+        department: formData.department,
+        studentId: formData.studentId
+      };
+
+      const result = await register(formData.email, formData.password, userData);
+      
+      if (result.success) {
+        console.log('✅ Registration successful!');
+        alert('Registration successful! Please login with your credentials.');
+        navigate('/login');
+      } else {
+        setError(result.error || 'Registration failed. Please try again.');
+      }
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
+      console.error('Registration error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -68,6 +99,7 @@ const Register = () => {
                     key={role}
                     type="button"
                     onClick={() => setFormData({...formData, role})}
+                    disabled={loading}
                     className={`py-3 px-4 rounded-xl font-bold capitalize transition-all ${
                       formData.role === role
                         ? 'bg-slate-800 text-white shadow-lg'
@@ -88,6 +120,7 @@ const Register = () => {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  disabled={loading}
                   className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-slate-800 transition-colors"
                   placeholder="John Doe"
                 />
@@ -102,11 +135,46 @@ const Register = () => {
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  disabled={loading}
                   className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-slate-800 transition-colors"
                   placeholder="your@email.com"
                 />
               </div>
             </div>
+
+            {formData.role === 'student' && (
+              <div>
+                <label className="text-sm font-bold text-slate-700 mb-2 block">Student ID (Optional)</label>
+                <div className="relative">
+                  <GraduationCap className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                    type="text"
+                    value={formData.studentId}
+                    onChange={(e) => setFormData({...formData, studentId: e.target.value})}
+                    disabled={loading}
+                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-slate-800 transition-colors"
+                    placeholder="STU001"
+                  />
+                </div>
+              </div>
+            )}
+
+            {(formData.role === 'faculty' || formData.role === 'admin') && (
+              <div>
+                <label className="text-sm font-bold text-slate-700 mb-2 block">Department (Optional)</label>
+                <div className="relative">
+                  <GraduationCap className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                    type="text"
+                    value={formData.department}
+                    onChange={(e) => setFormData({...formData, department: e.target.value})}
+                    disabled={loading}
+                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-slate-800 transition-colors"
+                    placeholder="Computer Science"
+                  />
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="text-sm font-bold text-slate-700 mb-2 block">Password</label>
@@ -114,9 +182,10 @@ const Register = () => {
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Create a password"
+                  placeholder="Create a password (min 6 characters)"
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  disabled={loading}
                   className="w-full pl-12 pr-12 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-slate-800 transition-colors"
                 />
                 <button
@@ -138,6 +207,7 @@ const Register = () => {
                   placeholder="Confirm your password"
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                  disabled={loading}
                   className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-slate-800 transition-colors"
                 />
               </div>
@@ -149,8 +219,14 @@ const Register = () => {
               </div>
             )}
 
-            <Button onClick={handleRegister} variant="primary" fullWidth className="mt-6">
-              Create Account
+            <Button 
+              onClick={handleRegister} 
+              variant="primary" 
+              fullWidth 
+              className="mt-6"
+              disabled={loading}
+            >
+              {loading ? 'Creating Account...' : 'Create Account'}
             </Button>
 
             <p className="text-center text-sm text-slate-600 mt-6">

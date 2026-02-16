@@ -1,399 +1,261 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { 
-  BookOpen, Search, Filter, Download, Plus, Edit,
-  Trash2, Users, Calendar, Clock, Award, Settings,
-  TrendingUp, BarChart3, Eye, MoreVertical, Star,
-  CheckCircle, AlertCircle, FileText, Upload, Copy
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { BookOpen, Search, Plus, Edit, Trash2, Users, Calendar, Award, Loader, X, CheckCircle, Clock } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/shared/GlassCard';
+import { getAllClasses, createClass, deleteClass, getAllUsers } from '../firebase/database';
+
+const gradients = [
+  { color: 'from-blue-500 to-blue-600', image: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+  { color: 'from-purple-500 to-purple-600', image: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+  { color: 'from-green-500 to-emerald-600', image: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
+  { color: 'from-orange-500 to-red-500', image: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)' },
+];
 
 const CourseManagement = () => {
+  const [courses, setCourses] = useState([]);
+  const [faculty, setFaculty] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDepartment, setSelectedDepartment] = useState('all');
-  const [selectedCourse, setSelectedCourse] = useState(null);
-
-  // Sample course data
-  const courses = [
-    {
-      id: 1,
-      code: 'CS 101',
-      name: 'Introduction to Programming',
-      department: 'Computer Science',
-      instructor: 'Dr. Sarah Miller',
-      credits: 4,
-      enrolled: 45,
-      capacity: 50,
-      schedule: 'Mon, Wed, Fri - 10:00 AM',
-      room: 'Lecture Hall A',
-      semester: 'Spring 2024',
-      status: 'active',
-      rating: 4.5,
-      color: 'from-blue-500 to-blue-600',
-      description: 'Introduction to programming concepts and algorithms'
-    },
-    {
-      id: 2,
-      code: 'MATH 201',
-      name: 'Discrete Mathematics',
-      department: 'Mathematics',
-      instructor: 'Prof. John Davis',
-      credits: 3,
-      enrolled: 38,
-      capacity: 40,
-      schedule: 'Tue, Thu - 2:00 PM',
-      room: 'Room 204',
-      semester: 'Spring 2024',
-      status: 'active',
-      rating: 4.2,
-      color: 'from-purple-500 to-purple-600',
-      description: 'Fundamental concepts in discrete mathematics'
-    },
-    {
-      id: 3,
-      code: 'CS 202',
-      name: 'Data Structures',
-      department: 'Computer Science',
-      instructor: 'Dr. Emily Chen',
-      credits: 4,
-      enrolled: 42,
-      capacity: 45,
-      schedule: 'Mon, Wed - 1:00 PM',
-      room: 'Lab 3',
-      semester: 'Spring 2024',
-      status: 'active',
-      rating: 4.7,
-      color: 'from-green-500 to-emerald-600',
-      description: 'Advanced data structures and algorithms'
-    },
-    {
-      id: 4,
-      code: 'WEB 301',
-      name: 'Web Development',
-      department: 'Computer Science',
-      instructor: 'Prof. Michael Brown',
-      credits: 3,
-      enrolled: 35,
-      capacity: 40,
-      schedule: 'Tue, Thu - 11:00 AM',
-      room: 'Computer Lab 1',
-      semester: 'Spring 2024',
-      status: 'active',
-      rating: 4.6,
-      color: 'from-orange-500 to-red-500',
-      description: 'Modern web development technologies'
-    },
-    {
-      id: 5,
-      code: 'PHYS 101',
-      name: 'Physics I',
-      department: 'Physics',
-      instructor: 'Dr. Robert Wilson',
-      credits: 4,
-      enrolled: 28,
-      capacity: 35,
-      schedule: 'Mon, Wed, Fri - 9:00 AM',
-      room: 'Science Building 201',
-      semester: 'Spring 2024',
-      status: 'active',
-      rating: 4.0,
-      color: 'from-cyan-500 to-blue-600',
-      description: 'Introduction to classical mechanics'
-    },
-    {
-      id: 6,
-      code: 'CS 401',
-      name: 'Machine Learning',
-      department: 'Computer Science',
-      instructor: 'Dr. Sarah Miller',
-      credits: 4,
-      enrolled: 0,
-      capacity: 30,
-      schedule: 'TBD',
-      room: 'TBD',
-      semester: 'Fall 2024',
-      status: 'upcoming',
-      rating: 0,
-      color: 'from-indigo-500 to-purple-600',
-      description: 'Introduction to machine learning algorithms'
-    }
-  ];
-
-  const departments = [
-    { id: 'all', name: 'All Departments', count: courses.length },
-    { id: 'cs', name: 'Computer Science', count: courses.filter(c => c.department === 'Computer Science').length },
-    { id: 'math', name: 'Mathematics', count: courses.filter(c => c.department === 'Mathematics').length },
-    { id: 'physics', name: 'Physics', count: courses.filter(c => c.department === 'Physics').length }
-  ];
-
-  const stats = {
-    totalCourses: courses.length,
-    activeCourses: courses.filter(c => c.status === 'active').length,
-    totalStudents: courses.reduce((sum, c) => sum + c.enrolled, 0),
-    avgEnrollment: Math.round(courses.reduce((sum, c) => sum + (c.enrolled / c.capacity * 100), 0) / courses.length)
-  };
-
-  const filteredCourses = courses.filter(course => {
-    const matchesSearch = course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         course.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         course.instructor.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDepartment = selectedDepartment === 'all' || 
-                              course.department.toLowerCase().replace(' ', '') === selectedDepartment;
-    return matchesSearch && matchesDepartment;
+  const [showModal, setShowModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [newCourse, setNewCourse] = useState({
+    name: '', code: '', description: '', schedule: '', room: '',
+    semester: 'Spring 2026', credits: 3, facultyId: '', department: ''
   });
 
-  const getStatusBadge = (status) => {
-    const badges = {
-      active: { bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle, label: 'Active' },
-      upcoming: { bg: 'bg-blue-100', text: 'text-blue-700', icon: Clock, label: 'Upcoming' },
-      completed: { bg: 'bg-slate-100', text: 'text-slate-700', icon: CheckCircle, label: 'Completed' }
-    };
-    const badge = badges[status];
-    const Icon = badge.icon;
-    return (
-      <span className={`px-3 py-1 ${badge.bg} ${badge.text} text-xs font-bold rounded-full flex items-center gap-1 w-fit`}>
-        <Icon size={12} />
-        {badge.label}
-      </span>
-    );
+  const fetchData = async () => {
+    setLoading(true);
+    const [classesRes, usersRes] = await Promise.all([getAllClasses(), getAllUsers()]);
+    if (classesRes.success) setCourses(classesRes.classes);
+    if (usersRes.success) setFaculty(usersRes.users.filter(u => u.role === 'faculty'));
+    setLoading(false);
   };
 
-  const getEnrollmentColor = (enrolled, capacity) => {
-    const percentage = (enrolled / capacity) * 100;
-    if (percentage >= 90) return 'text-red-600';
-    if (percentage >= 75) return 'text-orange-600';
-    return 'text-green-600';
+  useEffect(() => { fetchData(); }, []);
+
+  const filtered = courses.filter(c =>
+    !searchTerm ||
+    c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.code?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleCreate = async () => {
+    if (!newCourse.name || !newCourse.code) { alert('Please fill in class name and code.'); return; }
+    setCreating(true);
+    const gradIdx = courses.length % gradients.length;
+    const selectedFaculty = faculty.find(f => f.id === newCourse.facultyId);
+    const result = await createClass({
+      ...newCourse,
+      credits: parseInt(newCourse.credits),
+      instructor: selectedFaculty?.name || 'TBA',
+      color: gradients[gradIdx].color,
+      image: gradients[gradIdx].image,
+      icon: '📚'
+    });
+    if (result.success) {
+      setSuccessMsg('Course created and students auto-enrolled!');
+      setTimeout(() => setSuccessMsg(''), 4000);
+      setShowModal(false);
+      setNewCourse({ name: '', code: '', description: '', schedule: '', room: '', semester: 'Spring 2026', credits: 3, facultyId: '', department: '' });
+      fetchData();
+    } else {
+      alert('Error: ' + result.error);
+    }
+    setCreating(false);
   };
+
+  const handleDelete = async (courseId, courseName) => {
+    if (!window.confirm(`Delete course "${courseName}"?`)) return;
+    setDeleting(courseId);
+    const result = await deleteClass(courseId);
+    if (result.success) {
+      setCourses(prev => prev.filter(c => c.id !== courseId));
+      setSuccessMsg('Course deleted successfully');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } else {
+      alert('Error: ' + result.error);
+    }
+    setDeleting(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader className="animate-spin w-12 h-12 text-blue-600 mx-auto mb-4" />
+          <p className="text-lg font-semibold text-slate-700">Loading courses...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-7xl mx-auto px-6 py-24">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-12"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-black text-slate-900 mb-2">
-                Course Management 📚
-              </h1>
-              <p className="text-lg text-slate-600">Manage all courses and curricula</p>
+              <h1 className="text-4xl font-black text-slate-900 mb-2">Course Management 📚</h1>
+              <p className="text-lg text-slate-600">Create and manage all courses on the platform</p>
             </div>
-            <Button variant="primary" icon={Plus}>
-              Add New Course
-            </Button>
+            <Button variant="primary" icon={Plus} onClick={() => setShowModal(true)}>Add Course</Button>
           </div>
         </motion.div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+        {successMsg && (
+          <div className="p-4 mb-6 bg-green-50 border-2 border-green-200 rounded-xl flex items-center gap-3">
+            <CheckCircle className="text-green-600" size={20} />
+            <p className="text-green-700 font-bold">{successMsg}</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-6 mb-8">
           {[
-            { label: 'Total Courses', value: stats.totalCourses, icon: BookOpen, color: 'from-blue-500 to-blue-600', change: '+3' },
-            { label: 'Active Courses', value: stats.activeCourses, icon: CheckCircle, color: 'from-green-500 to-emerald-600', change: '+2' },
-            { label: 'Total Enrolled', value: stats.totalStudents, icon: Users, color: 'from-purple-500 to-purple-600', change: '+48' },
-            { label: 'Avg Enrollment', value: `${stats.avgEnrollment}%`, icon: TrendingUp, color: 'from-orange-500 to-red-500', change: '+5%' }
+            { label: 'Total Courses', value: courses.length, icon: BookOpen, color: 'from-blue-500 to-blue-600' },
+            { label: 'Faculty Members', value: faculty.length, icon: Users, color: 'from-purple-500 to-purple-600' },
+            { label: 'Active Semester', value: 'Spring 2026', icon: Calendar, color: 'from-green-500 to-emerald-600' }
           ].map((stat, i) => (
-            <Card key={i} delay={i * 0.1} className="p-6 bg-gradient-to-br hover:shadow-xl transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center shadow-lg`}>
-                  <stat.icon size={24} className="text-white" />
-                </div>
-                <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                  {stat.change}
-                </span>
+            <Card key={i} className="p-6">
+              <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center mb-3 shadow-lg`}>
+                <stat.icon size={22} className="text-white" />
               </div>
               <div className="text-sm font-bold text-slate-500 mb-1">{stat.label}</div>
-              <div className="text-3xl font-black text-slate-900">{stat.value}</div>
+              <div className="text-2xl font-black text-slate-900">{stat.value}</div>
             </Card>
           ))}
         </div>
 
-        {/* Department Filters */}
-        <div className="flex gap-3 mb-8 overflow-x-auto pb-2">
-          {departments.map((dept) => (
-            <button
-              key={dept.id}
-              onClick={() => setSelectedDepartment(dept.id)}
-              className={`px-6 py-3 rounded-xl font-bold transition-all whitespace-nowrap ${
-                selectedDepartment === dept.id
-                  ? 'bg-slate-900 text-white shadow-lg'
-                  : 'bg-white text-slate-700 hover:bg-slate-50 shadow'
-              }`}
-            >
-              {dept.name}
-              <span className="ml-2 text-xs opacity-70">({dept.count})</span>
-            </button>
-          ))}
+        <div className="flex gap-4 mb-6">
+          <div className="flex-1 relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Search courses..."
+              className="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+          </div>
         </div>
 
-        {/* Search and Actions */}
-        <Card className="p-6 mb-8">
-          <div className="flex flex-col md:flex-row gap-4">
-            {/* Search Bar */}
-            <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
-              <input
-                type="text"
-                placeholder="Search by course name, code, or instructor..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl font-semibold focus:border-blue-500 focus:outline-none transition-colors"
-              />
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-2">
-              <Button variant="outline" icon={Upload} size="sm">
-                Import
-              </Button>
-              <Button variant="outline" icon={Download} size="sm">
-                Export
-              </Button>
-              <Button variant="outline" icon={Filter} size="sm">
-                Filter
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        {/* Courses Grid */}
-        <div className="grid lg:grid-cols-3 gap-6 mb-8">
-          {filteredCourses.map((course, i) => (
-            <Card key={i} hover className="overflow-hidden">
-              <div className="flex">
-                {/* Color Bar */}
-                <div 
-                  className={`w-2 flex-shrink-0 bg-gradient-to-b ${course.color}`}
-                />
-                
-                {/* Content */}
-                <div className="flex-1 p-6">
-                  <div className="flex items-start justify-between mb-4">
+        {filtered.length === 0 ? (
+          <Card className="p-12 text-center">
+            <BookOpen size={48} className="text-slate-300 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-slate-900 mb-2">{searchTerm ? 'No courses found' : 'No courses yet'}</h3>
+            <p className="text-slate-600 mb-4">{searchTerm ? 'Try a different search.' : 'Create your first course to get started.'}</p>
+            {!searchTerm && <Button variant="primary" icon={Plus} onClick={() => setShowModal(true)}>Create First Course</Button>}
+          </Card>
+        ) : (
+          <div className="grid gap-4">
+            {filtered.map((course, i) => (
+              <Card key={i} hover className="overflow-hidden">
+                <div className="flex">
+                  <div className="w-2 flex-shrink-0" style={{ background: course.image }} />
+                  <div className="flex-1 p-6 flex items-center gap-4">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-lg">
-                          {course.code}
-                        </span>
-                        {getStatusBadge(course.status)}
+                      <div className="flex items-center gap-3 mb-1">
+                        <span className="text-sm font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-lg">{course.code}</span>
+                        {course.semester && <span className="text-xs text-slate-400">{course.semester}</span>}
                       </div>
-                      <h3 className="text-lg font-black text-slate-900 mb-1">
-                        {course.name}
-                      </h3>
-                      <p className="text-sm text-slate-600 mb-2">{course.description}</p>
+                      <h3 className="text-lg font-black text-slate-900">{course.name}</h3>
+                      <p className="text-sm text-slate-600">{course.instructor || 'No faculty assigned'}</p>
                     </div>
-                  </div>
-
-                  {/* Instructor */}
-                  <div className="flex items-center gap-2 mb-4 p-3 bg-slate-50 rounded-xl">
-                    <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">
-                      👨‍🏫
+                    <div className="flex items-center gap-6 text-sm text-slate-500">
+                      {course.schedule && <span className="flex items-center gap-1"><Clock size={14} />{course.schedule}</span>}
+                      {course.room && <span className="flex items-center gap-1"><Calendar size={14} />{course.room}</span>}
+                      <span className="flex items-center gap-1"><Award size={14} />{course.credits || 3} credits</span>
                     </div>
-                    <div className="flex-1">
-                      <div className="text-xs text-slate-500">Instructor</div>
-                      <div className="text-sm font-bold text-slate-900">{course.instructor}</div>
-                    </div>
-                  </div>
-
-                  {/* Course Info Grid */}
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="p-3 bg-slate-50 rounded-xl">
-                      <div className="text-xs text-slate-500 mb-1">Credits</div>
-                      <div className="text-lg font-black text-slate-900">{course.credits}</div>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-xl">
-                      <div className="text-xs text-slate-500 mb-1">Department</div>
-                      <div className="text-xs font-bold text-slate-900">{course.department}</div>
-                    </div>
-                  </div>
-
-                  {/* Enrollment */}
-                  <div className="mb-4">
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="font-semibold text-slate-700">Enrollment</span>
-                      <span className={`font-black ${getEnrollmentColor(course.enrolled, course.capacity)}`}>
-                        {course.enrolled}/{course.capacity}
-                      </span>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full bg-gradient-to-r ${course.color} rounded-full transition-all`}
-                        style={{ width: `${(course.enrolled / course.capacity) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Rating */}
-                  {course.rating > 0 && (
-                    <div className="flex items-center gap-2 mb-4 p-2 bg-amber-50 rounded-lg border border-amber-200">
-                      <Star size={16} className="text-amber-500 fill-amber-500" />
-                      <span className="text-sm font-bold text-slate-900">{course.rating}</span>
-                      <span className="text-xs text-slate-500">Student Rating</span>
-                    </div>
-                  )}
-
-                  {/* Schedule */}
-                  <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-200">
-                    <div className="flex items-center gap-2 text-sm mb-1">
-                      <Clock size={14} className="text-blue-600" />
-                      <span className="font-bold text-slate-900">{course.schedule}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Calendar size={14} className="text-blue-600" />
-                      <span className="text-slate-600">{course.room}</span>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" icon={Eye} className="flex-1">
-                      View
-                    </Button>
-                    <Button variant="outline" size="sm" icon={Edit} className="flex-1">
-                      Edit
-                    </Button>
-                    <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-                      <MoreVertical size={18} className="text-slate-400" />
+                    <button onClick={() => handleDelete(course.id, course.name)} disabled={deleting === course.id}
+                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      {deleting === course.id ? <Loader size={16} className="animate-spin" /> : <Trash2 size={16} />}
                     </button>
                   </div>
                 </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid md:grid-cols-3 gap-6">
-          <Card className="p-6 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
-            <BookOpen size={32} className="text-blue-600 mb-4" />
-            <h3 className="text-lg font-black text-slate-900 mb-2">Course Catalog</h3>
-            <p className="text-sm text-slate-600 mb-4">View and manage the complete course catalog</p>
-            <Button variant="primary" fullWidth size="sm">
-              View Catalog
-            </Button>
-          </Card>
-
-          <Card className="p-6 bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
-            <Copy size={32} className="text-purple-600 mb-4" />
-            <h3 className="text-lg font-black text-slate-900 mb-2">Clone Courses</h3>
-            <p className="text-sm text-slate-600 mb-4">Duplicate courses for the next semester</p>
-            <Button variant="primary" fullWidth size="sm">
-              Clone Courses
-            </Button>
-          </Card>
-
-          <Card className="p-6 bg-gradient-to-br from-orange-50 to-red-50 border-orange-200">
-            <BarChart3 size={32} className="text-orange-600 mb-4" />
-            <h3 className="text-lg font-black text-slate-900 mb-2">Analytics</h3>
-            <p className="text-sm text-slate-600 mb-4">View course enrollment and performance metrics</p>
-            <Button variant="primary" fullWidth size="sm">
-              View Analytics
-            </Button>
-          </Card>
-        </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Create Course Modal */}
+      <AnimatePresence>
+        {showModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6"
+            onClick={() => setShowModal(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-black text-slate-900">Add New Course</h3>
+                <button onClick={() => setShowModal(false)} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-slate-200"><X size={16} /></button>
+              </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Course Name *</label>
+                    <input type="text" value={newCourse.name} onChange={e => setNewCourse({...newCourse, name: e.target.value})}
+                      placeholder="e.g., Data Structures"
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Course Code *</label>
+                    <input type="text" value={newCourse.code} onChange={e => setNewCourse({...newCourse, code: e.target.value})}
+                      placeholder="e.g., CS 202"
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-bold text-slate-700 mb-2 block">Assign Faculty</label>
+                  <select value={newCourse.facultyId} onChange={e => setNewCourse({...newCourse, facultyId: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500">
+                    <option value="">Select Faculty (optional)</option>
+                    {faculty.map(f => <option key={f.id} value={f.id}>{f.name} - {f.department || 'No dept'}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Schedule</label>
+                    <input type="text" value={newCourse.schedule} onChange={e => setNewCourse({...newCourse, schedule: e.target.value})}
+                      placeholder="Mon, Wed - 10 AM"
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Room</label>
+                    <input type="text" value={newCourse.room} onChange={e => setNewCourse({...newCourse, room: e.target.value})}
+                      placeholder="Room 101"
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Semester</label>
+                    <select value={newCourse.semester} onChange={e => setNewCourse({...newCourse, semester: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500">
+                      <option>Spring 2026</option><option>Fall 2026</option><option>Summer 2026</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Credits</label>
+                    <select value={newCourse.credits} onChange={e => setNewCourse({...newCourse, credits: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500">
+                      <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800">
+                  <strong>Auto-enrollment:</strong> All registered students will be automatically enrolled in this course.
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="ghost" fullWidth onClick={() => setShowModal(false)}>Cancel</Button>
+                  <Button variant="primary" fullWidth onClick={handleCreate} disabled={creating}>
+                    {creating ? 'Creating...' : 'Create Course'}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

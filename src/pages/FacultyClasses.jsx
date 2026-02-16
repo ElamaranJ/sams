@@ -1,113 +1,119 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   BookOpen, Users, Clock, Calendar, TrendingUp,
-  FileText, Award, ChevronRight, Plus, Edit,
-  Download, ExternalLink, BarChart3, CheckCircle,
-  AlertCircle, Settings, Bell, Video, QrCode, Upload
+  FileText, Award, Plus, Edit, Download,
+  BarChart3, CheckCircle, Settings, Bell, Video, QrCode, Upload, Loader,
+  Trash2, X, ChevronRight
 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/shared/GlassCard';
 import { useAuth } from '../context/AuthContext';
+import { getFacultyClasses, createClass, deleteClass } from '../firebase/database';
+
+const gradients = [
+  { color: 'from-blue-500 to-blue-600', image: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+  { color: 'from-purple-500 to-purple-600', image: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' },
+  { color: 'from-green-500 to-emerald-600', image: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' },
+  { color: 'from-orange-500 to-red-500', image: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)' },
+  { color: 'from-teal-500 to-cyan-600', image: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)' },
+];
 
 const FacultyClasses = () => {
   const { user } = useAuth();
-  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [newClass, setNewClass] = useState({
+    name: '', code: '', description: '', schedule: '', room: '', semester: 'Spring 2026', credits: 3
+  });
 
-  // Faculty courses - classes they teach
-  const courses = [
-    {
-      id: 1,
-      code: 'CS 101',
-      name: 'Introduction to Programming',
-      color: 'from-blue-500 to-blue-600',
-      image: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      enrolled: 45,
-      schedule: 'Mon, Wed, Fri - 10:00 AM',
-      room: 'Lecture Hall A',
-      semester: 'Spring 2024',
-      nextClass: 'Today, 10:00 AM',
-      materials: 12,
-      assignments: 8,
-      pendingGrading: 5,
-      avgGrade: 'B+',
-      avgAttendance: 94,
-      completionRate: 87
-    },
-    {
-      id: 2,
-      code: 'CS 202',
-      name: 'Data Structures',
-      color: 'from-purple-500 to-purple-600',
-      image: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-      enrolled: 42,
-      schedule: 'Tue, Thu - 2:00 PM',
-      room: 'Lab 3',
-      semester: 'Spring 2024',
-      nextClass: 'Tomorrow, 2:00 PM',
-      materials: 15,
-      assignments: 10,
-      pendingGrading: 8,
-      avgGrade: 'A-',
-      avgAttendance: 91,
-      completionRate: 92
-    },
-    {
-      id: 3,
-      code: 'CS 301',
-      name: 'Advanced Algorithms',
-      color: 'from-green-500 to-emerald-600',
-      image: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-      enrolled: 38,
-      schedule: 'Mon, Wed - 3:00 PM',
-      room: 'Room 204',
-      semester: 'Spring 2024',
-      nextClass: 'Monday, 3:00 PM',
-      materials: 18,
-      assignments: 12,
-      pendingGrading: 12,
-      avgGrade: 'B',
-      avgAttendance: 89,
-      completionRate: 85
+  const fetchClasses = async () => {
+    if (!user?.uid) return;
+    setLoading(true);
+    const result = await getFacultyClasses(user.uid);
+    if (result.success) setCourses(result.classes);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchClasses(); }, [user]);
+
+  const handleCreateClass = async () => {
+    if (!newClass.name || !newClass.code) {
+      alert('Please fill in the class name and code.');
+      return;
     }
-  ];
+    setCreating(true);
+    const gradIdx = courses.length % gradients.length;
+    const result = await createClass({
+      ...newClass,
+      credits: parseInt(newClass.credits),
+      facultyId: user.uid,
+      instructor: user.name,
+      color: gradients[gradIdx].color,
+      image: gradients[gradIdx].image,
+      icon: '📚',
+      studentsCount: 0
+    });
+    if (result.success) {
+      alert('✅ Class created! All existing students have been auto-enrolled.');
+      setShowCreateModal(false);
+      setNewClass({ name: '', code: '', description: '', schedule: '', room: '', semester: 'Spring 2026', credits: 3 });
+      fetchClasses();
+    } else {
+      alert('❌ Error: ' + result.error);
+    }
+    setCreating(false);
+  };
 
-  const upcomingClasses = [
-    { course: 'CS 101', time: '10:00 AM', room: 'Lecture Hall A', students: 45, status: 'today' },
-    { course: 'CS 202', time: '2:00 PM', room: 'Lab 3', students: 42, status: 'tomorrow' },
-    { course: 'CS 301', time: '3:00 PM', room: 'Room 204', students: 38, status: 'monday' }
-  ];
+  const handleDeleteClass = async (classId, className) => {
+    if (!window.confirm(`Delete "${className}"? This cannot be undone.`)) return;
+    setDeleting(classId);
+    const result = await deleteClass(classId);
+    if (result.success) {
+      setCourses(prev => prev.filter(c => c.id !== classId));
+    } else {
+      alert('❌ Error: ' + result.error);
+    }
+    setDeleting(null);
+  };
 
-  const recentActivity = [
-    { id: 1, action: 'Assignment graded', course: 'CS 101', time: '2 hours ago', icon: CheckCircle, color: 'text-green-600' },
-    { id: 2, action: 'New submission', course: 'CS 202', time: '5 hours ago', icon: FileText, color: 'text-blue-600' },
-    { id: 3, action: 'Material uploaded', course: 'CS 301', time: '1 day ago', icon: Upload, color: 'text-purple-600' }
-  ];
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader className="animate-spin w-12 h-12 text-blue-600 mx-auto mb-4" />
+          <p className="text-lg font-semibold text-slate-700">Loading your classes...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-7xl mx-auto px-6 py-24">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-12"
-        >
-          <h1 className="text-4xl font-black text-slate-900 mb-2">
-            My Teaching Schedule 👨‍🏫
-          </h1>
-          <p className="text-lg text-slate-600">Manage your courses and students</p>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-black text-slate-900 mb-2">My Teaching Schedule 👨‍🏫</h1>
+              <p className="text-lg text-slate-600">Manage your courses and students</p>
+            </div>
+            <Button variant="primary" icon={Plus} onClick={() => setShowCreateModal(true)}>
+              Create New Class
+            </Button>
+          </div>
         </motion.div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           {[
-            { label: 'Active Courses', value: '3', icon: BookOpen, color: 'from-blue-500 to-blue-600' },
-            { label: 'Total Students', value: '125', icon: Users, color: 'from-purple-500 to-purple-600' },
-            { label: 'Pending Grading', value: '25', icon: FileText, color: 'from-orange-500 to-red-500' },
-            { label: 'Avg Attendance', value: '91%', icon: TrendingUp, color: 'from-green-500 to-emerald-600' }
+            { label: 'Active Courses', value: courses.length.toString(), icon: BookOpen, color: 'from-blue-500 to-blue-600' },
+            { label: 'Total Assignments', value: '-', icon: FileText, color: 'from-orange-500 to-red-500' },
+            { label: 'Avg Attendance', value: '-', icon: TrendingUp, color: 'from-green-500 to-emerald-600' }
           ].map((stat, i) => (
-            <Card key={i} delay={i * 0.1} className="p-6 bg-gradient-to-br hover:shadow-xl transition-shadow">
+            <Card key={i} delay={i * 0.1} className="p-6 hover:shadow-xl transition-shadow">
               <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center mb-4 shadow-lg`}>
                 <stat.icon size={24} className="text-white" />
               </div>
@@ -117,243 +123,148 @@ const FacultyClasses = () => {
           ))}
         </div>
 
-        {/* Main Content */}
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Left Column - Courses List */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-black text-slate-900">Your Courses</h2>
-              <Button variant="primary" icon={Plus} size="sm">
-                Request New Course
-              </Button>
-            </div>
-            
-            <div className="grid gap-6">
-              {courses.map((course, i) => (
-                <Card key={i} hover className="overflow-hidden">
-                  <div className="flex">
-                    {/* Course Color Bar */}
-                    <div 
-                      className="w-2 flex-shrink-0"
-                      style={{ background: course.image }}
-                    />
-                    
-                    {/* Course Content */}
-                    <div className="flex-1 p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="text-sm font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-lg">
-                              {course.code}
-                            </span>
-                            <span className="text-xs font-semibold text-slate-400">
-                              {course.semester}
-                            </span>
-                          </div>
-                          <h3 className="text-xl font-black text-slate-900 mb-1">
-                            {course.name}
-                          </h3>
-                          <p className="text-sm text-slate-600 flex items-center gap-2">
-                            <Users size={14} />
-                            {course.enrolled} Students Enrolled
-                          </p>
-                        </div>
-                        
-                        <div className="flex gap-2">
-                          <Button 
-                            variant="secondary" 
-                            size="sm"
-                            icon={BarChart3}
-                          >
-                            Analytics
-                          </Button>
-                          <Button 
-                            variant="primary" 
-                            size="sm"
-                            icon={Settings}
-                          >
-                            Manage
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Course Stats Grid */}
-                      <div className="grid grid-cols-4 gap-3 mb-4">
-                        <div className="p-3 bg-slate-50 rounded-xl text-center">
-                          <div className="text-xs text-slate-500 mb-1">Materials</div>
-                          <div className="text-lg font-black text-slate-900">{course.materials}</div>
-                        </div>
-                        <div className="p-3 bg-slate-50 rounded-xl text-center">
-                          <div className="text-xs text-slate-500 mb-1">Assignments</div>
-                          <div className="text-lg font-black text-slate-900">{course.assignments}</div>
-                        </div>
-                        <div className="p-3 bg-orange-50 rounded-xl text-center border border-orange-200">
-                          <div className="text-xs text-orange-600 mb-1">Pending</div>
-                          <div className="text-lg font-black text-orange-600">{course.pendingGrading}</div>
-                        </div>
-                        <div className="p-3 bg-green-50 rounded-xl text-center border border-green-200">
-                          <div className="text-xs text-green-600 mb-1">Avg Grade</div>
-                          <div className="text-lg font-black text-green-600">{course.avgGrade}</div>
-                        </div>
-                      </div>
-
-                      {/* Progress Bars */}
-                      <div className="space-y-3 mb-4">
-                        <div>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="font-semibold text-slate-700">Course Completion</span>
-                            <span className="font-black text-slate-900">{course.completionRate}%</span>
-                          </div>
-                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full bg-gradient-to-r ${course.color} rounded-full transition-all`}
-                              style={{ width: `${course.completionRate}%` }}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="font-semibold text-slate-700">Average Attendance</span>
-                            <span className="font-black text-green-600">{course.avgAttendance}%</span>
-                          </div>
-                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-gradient-to-r from-green-500 to-emerald-600 rounded-full transition-all"
-                              style={{ width: `${course.avgAttendance}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Quick Actions */}
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" icon={QrCode} className="flex-1">
-                          Generate QR
-                        </Button>
-                        <Button variant="outline" size="sm" icon={FileText} className="flex-1">
-                          Upload Material
-                        </Button>
-                        <Button variant="outline" size="sm" icon={Plus} className="flex-1">
-                          New Assignment
-                        </Button>
-                      </div>
-
-                      {/* Schedule Info */}
-                      <div className="mt-4 flex items-center justify-between p-3 bg-blue-50 rounded-xl border-2 border-blue-100">
-                        <div className="flex items-center gap-3">
-                          <Clock size={18} className="text-blue-600" />
-                          <div>
-                            <div className="text-xs text-slate-500">Next Class</div>
-                            <div className="text-sm font-bold text-slate-900">{course.nextClass}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <Calendar size={16} />
-                          {course.room}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          {/* Right Sidebar */}
-          <div className="space-y-6">
-            {/* Upcoming Classes */}
-            <Card className="p-6">
-              <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
-                <Calendar size={24} className="text-blue-600" />
-                Upcoming Classes
-              </h3>
-              <div className="space-y-3">
-                {upcomingClasses.map((cls, i) => (
-                  <div key={i} className={`p-4 rounded-xl border-2 ${
-                    cls.status === 'today' 
-                      ? 'bg-blue-50 border-blue-200' 
-                      : 'bg-slate-50 border-slate-200'
-                  }`}>
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white font-black ${
-                        cls.status === 'today' ? 'bg-blue-600' : 'bg-slate-400'
-                      }`}>
-                        {cls.time.split(':')[0]}
-                      </div>
+        {courses.length === 0 ? (
+          <Card className="p-12 text-center">
+            <BookOpen size={56} className="text-slate-300 mx-auto mb-4" />
+            <h3 className="text-2xl font-black text-slate-900 mb-2">No Classes Created Yet</h3>
+            <p className="text-slate-600 mb-6">
+              Create your first class. Students will be <strong>automatically enrolled</strong> as soon as you create it!
+            </p>
+            <Button variant="primary" icon={Plus} onClick={() => setShowCreateModal(true)}>
+              Create Your First Class
+            </Button>
+          </Card>
+        ) : (
+          <div className="grid gap-6">
+            {courses.map((course, i) => (
+              <Card key={i} hover className="overflow-hidden">
+                <div className="flex">
+                  <div className="w-2 flex-shrink-0" style={{ background: course.image }} />
+                  <div className="flex-1 p-6">
+                    <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
-                        <div className="font-bold text-slate-900">{cls.course}</div>
-                        <div className="text-xs text-slate-600">{cls.room} • {cls.students} students</div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="text-sm font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-lg">
+                            {course.code}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-400">{course.semester}</span>
+                        </div>
+                        <h3 className="text-xl font-black text-slate-900 mb-1">{course.name}</h3>
+                        {course.description && <p className="text-sm text-slate-600 mb-2">{course.description}</p>}
+                        <div className="flex items-center gap-4 text-sm text-slate-600">
+                          {course.schedule && <span className="flex items-center gap-1"><Clock size={14} />{course.schedule}</span>}
+                          {course.room && <span className="flex items-center gap-1"><Calendar size={14} />{course.room}</span>}
+                          <span className="flex items-center gap-1"><Award size={14} />{course.credits || 3} credits</span>
+                        </div>
                       </div>
-                    </div>
-                    {cls.status === 'today' && (
                       <div className="flex gap-2">
-                        <Button variant="primary" fullWidth size="sm" icon={Video}>
-                          Start Class
-                        </Button>
-                        <Button variant="outline" size="sm" icon={QrCode}>
-                          QR
+                        <Button variant="ghost" size="sm" icon={Trash2} onClick={() => handleDeleteClass(course.id, course.name)} disabled={deleting === course.id}>
+                          {deleting === course.id ? 'Deleting...' : 'Delete'}
                         </Button>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </Card>
+                    </div>
 
-            {/* Recent Activity */}
-            <Card className="p-6">
-              <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
-                <Bell size={24} className="text-purple-600" />
-                Recent Activity
-              </h3>
-              <div className="space-y-3">
-                {recentActivity.map((activity) => (
-                  <div key={activity.id} className="p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
-                    <div className="flex items-start gap-3">
-                      <activity.icon size={18} className={activity.color} />
-                      <div className="flex-1">
-                        <div className="font-bold text-slate-900 text-sm">{activity.action}</div>
-                        <div className="text-xs text-slate-500">{activity.course} • {activity.time}</div>
-                      </div>
-                      <ChevronRight size={16} className="text-slate-400" />
+                    <div className="flex items-center gap-2 mt-4">
+                      <Button variant="outline" size="sm" icon={QrCode} className="flex-1">Generate QR</Button>
+                      <Button variant="outline" size="sm" icon={Plus} className="flex-1">New Assignment</Button>
+                      <Button variant="outline" size="sm" icon={BarChart3} className="flex-1">Analytics</Button>
                     </div>
                   </div>
-                ))}
-              </div>
-              <Button variant="ghost" fullWidth size="sm" className="mt-4">
-                View All Activity
-              </Button>
-            </Card>
-
-            {/* Quick Actions Card */}
-            <Card className="p-6 bg-gradient-to-br from-purple-50 to-blue-50 border-purple-200">
-              <h3 className="text-xl font-black text-slate-900 mb-4">
-                Quick Actions
-              </h3>
-              <div className="space-y-2">
-                <button className="w-full text-left p-3 bg-white rounded-xl hover:shadow-md transition-all flex items-center justify-between group">
-                  <span className="font-semibold text-slate-700 group-hover:text-blue-600 transition-colors">
-                    Bulk Grade Upload
-                  </span>
-                  <Upload size={16} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
-                </button>
-                <button className="w-full text-left p-3 bg-white rounded-xl hover:shadow-md transition-all flex items-center justify-between group">
-                  <span className="font-semibold text-slate-700 group-hover:text-blue-600 transition-colors">
-                    Generate Report
-                  </span>
-                  <Download size={16} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
-                </button>
-                <button className="w-full text-left p-3 bg-white rounded-xl hover:shadow-md transition-all flex items-center justify-between group">
-                  <span className="font-semibold text-slate-700 group-hover:text-blue-600 transition-colors">
-                    Course Settings
-                  </span>
-                  <Settings size={16} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
-                </button>
-              </div>
-            </Card>
+                </div>
+              </Card>
+            ))}
           </div>
-        </div>
+        )}
       </div>
+
+      {/* Create Class Modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6"
+            onClick={() => setShowCreateModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-black text-slate-900">Create New Class</h3>
+                <button onClick={() => setShowCreateModal(false)} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center hover:bg-slate-200">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-bold text-slate-700 mb-2 block">Class Name *</label>
+                  <input type="text" value={newClass.name} onChange={e => setNewClass({...newClass, name: e.target.value})}
+                    placeholder="e.g., Introduction to Programming"
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="text-sm font-bold text-slate-700 mb-2 block">Class Code *</label>
+                  <input type="text" value={newClass.code} onChange={e => setNewClass({...newClass, code: e.target.value})}
+                    placeholder="e.g., CS 101"
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="text-sm font-bold text-slate-700 mb-2 block">Description</label>
+                  <textarea value={newClass.description} onChange={e => setNewClass({...newClass, description: e.target.value})}
+                    placeholder="Short description of the class..."
+                    rows={2}
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Schedule</label>
+                    <input type="text" value={newClass.schedule} onChange={e => setNewClass({...newClass, schedule: e.target.value})}
+                      placeholder="e.g., Mon, Wed - 10AM"
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Room</label>
+                    <input type="text" value={newClass.room} onChange={e => setNewClass({...newClass, room: e.target.value})}
+                      placeholder="e.g., Lab 3"
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Semester</label>
+                    <select value={newClass.semester} onChange={e => setNewClass({...newClass, semester: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500">
+                      <option>Spring 2026</option>
+                      <option>Fall 2026</option>
+                      <option>Summer 2026</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-slate-700 mb-2 block">Credits</label>
+                    <select value={newClass.credits} onChange={e => setNewClass({...newClass, credits: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500">
+                      <option value={1}>1</option>
+                      <option value={2}>2</option>
+                      <option value={3}>3</option>
+                      <option value={4}>4</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800">
+                  <strong>✅ Auto-enrollment:</strong> All existing students will be automatically enrolled in this class when you create it.
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Button variant="ghost" fullWidth onClick={() => setShowCreateModal(false)}>Cancel</Button>
+                  <Button variant="primary" fullWidth onClick={handleCreateClass} disabled={creating}>
+                    {creating ? 'Creating...' : 'Create Class'}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

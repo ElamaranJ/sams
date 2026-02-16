@@ -10,19 +10,40 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ 
-    email: 'student@sams.edu', 
-    password: '', 
-    role: 'student' 
+    email: '', 
+    password: ''
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
-    login({ 
-      name: formData.role === 'student' ? 'Alex Johnson' : formData.role === 'faculty' ? 'Dr. Sarah Miller' : 'Admin User',
-      email: formData.email,
-      role: formData.role,
-    });
-    navigate('/dashboard');
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    // Validation
+    if (!formData.email || !formData.password) {
+      setError('Please enter both email and password');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const result = await login(formData.email, formData.password);
+      
+      if (result.success) {
+        console.log('✅ Login successful!');
+        navigate('/dashboard');
+      } else {
+        setError(result.error || 'Login failed. Please check your credentials.');
+      }
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
+      console.error('Login error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -53,24 +74,11 @@ const Login = () => {
           </div>
 
           <div className="space-y-5">
-            <div>
-              <label className="text-sm font-bold text-slate-700 mb-2 block">Select Your Role</label>
-              <div className="grid grid-cols-3 gap-2">
-                {['student', 'faculty', 'admin'].map(role => (
-                  <button
-                    key={role}
-                    onClick={() => setFormData({...formData, role, email: `${role}@sams.edu`})}
-                    className={`py-3 px-4 rounded-xl font-bold capitalize transition-all ${
-                      formData.role === role
-                        ? 'bg-slate-800 text-white shadow-lg'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {role}
-                  </button>
-                ))}
+            {error && (
+              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
+                <p className="text-red-600 text-sm font-semibold">{error}</p>
               </div>
-            </div>
+            )}
 
             <div>
               <label className="text-sm font-bold text-slate-700 mb-2 block">Email Address</label>
@@ -82,6 +90,7 @@ const Login = () => {
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
                   className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-slate-800 transition-colors"
                   placeholder="your@email.com"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -95,7 +104,9 @@ const Login = () => {
                   placeholder="Enter your password"
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin(e)}
                   className="w-full pl-12 pr-12 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-slate-800 transition-colors"
+                  disabled={loading}
                 />
                 <button
                   type="button"
@@ -107,8 +118,14 @@ const Login = () => {
               </div>
             </div>
 
-            <Button onClick={handleLogin} variant="primary" fullWidth className="mt-6">
-              Sign In
+            <Button 
+              onClick={handleLogin} 
+              variant="primary" 
+              fullWidth 
+              className="mt-6"
+              disabled={loading}
+            >
+              {loading ? 'Signing In...' : 'Sign In'}
             </Button>
 
             <p className="text-center text-sm text-slate-600 mt-6">

@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
+import { auth, db } from './firebase';
+import { useEffect, useState } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Home, BookOpen, Calendar, FileText, Award, QrCode,
-  Users, BarChart3, Settings, Edit, Plus
+  Users, BarChart3, Settings, Edit, Plus, GraduationCap
 } from 'lucide-react';
 
-// Import AuthContext from the separate file
 import { AuthProvider, useAuth } from './context/AuthContext';
 
-// Import your pages
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -33,32 +33,26 @@ import UserManagement from './pages/UserManagement';
 import CourseManagement from './pages/CourseManagement';
 import ScheduleManagement from './pages/ScheduleManagement';
 
-// Import shared components
 import Navbar from './components/layout/Navbar';
 
-// Protected Route Component
+// Protected Route
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
-// Public Route Component (redirect if already authenticated)
+// Public Route (redirect if logged in)
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated, user } = useAuth();
-  
-  if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
-  }
-  
+  const { isAuthenticated } = useAuth();
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
   return children;
 };
 
-// Dashboard Layout Component
+// Dashboard Layout
 const DashboardLayout = () => {
   const { user } = useAuth();
   const [activePage, setActivePage] = useState('home');
 
-  // Define menu items based on role
   const menuItems = {
     student: [
       { icon: Home, label: 'Dashboard', page: 'home' },
@@ -75,7 +69,7 @@ const DashboardLayout = () => {
       { icon: Plus, label: 'Create Assignment', page: 'create-assignment' },
       { icon: Edit, label: 'Evaluate', page: 'evaluate' },
       { icon: QrCode, label: 'Generate QR', page: 'generate-qr' },
-      { icon: BarChart3, label: 'Analytics', page: 'reports' },
+      { icon: BarChart3, label: 'Reports', page: 'reports' },
     ],
     admin: [
       { icon: Home, label: 'Dashboard', page: 'home' },
@@ -89,19 +83,22 @@ const DashboardLayout = () => {
 
   const items = menuItems[user?.role] || menuItems.student;
 
-  // Render appropriate dashboard based on role
   const renderHomePage = () => {
     switch (user?.role) {
-      case 'faculty':
-        return <FacultyDashboard />;
-      case 'student':
-        return <StudentDashboard />;
-      case 'admin':
-        return <AdminDashboard />;
-      default:
-        return <StudentDashboard />;
+      case 'faculty': return <FacultyDashboard />;
+      case 'student': return <StudentDashboard />;
+      case 'admin': return <AdminDashboard />;
+      default: return <StudentDashboard />;
     }
   };
+
+  const roleColor = user?.role === 'admin' ? 'from-red-500 to-red-600'
+    : user?.role === 'faculty' ? 'from-blue-500 to-purple-600'
+    : 'from-green-500 to-emerald-600';
+
+  const roleLabel = user?.role === 'admin' ? '🎛️ Admin'
+    : user?.role === 'faculty' ? '👨‍🏫 Faculty'
+    : '👨‍🎓 Student';
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -109,19 +106,27 @@ const DashboardLayout = () => {
       
       {/* Sidebar */}
       <div className="fixed left-0 top-16 bottom-0 w-64 bg-white border-r-2 border-slate-100 overflow-y-auto z-40">
+        {/* User Info in Sidebar */}
+        <div className="p-4 border-b border-slate-100">
+          <div className={`bg-gradient-to-br ${roleColor} rounded-xl p-4 text-white`}>
+            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center mb-2 font-black text-lg">
+              {user?.name?.charAt(0) || '?'}
+            </div>
+            <div className="font-bold text-sm truncate">{user?.name}</div>
+            <div className="text-xs text-white/80">{roleLabel}</div>
+          </div>
+        </div>
+
         <div className="p-4 space-y-1">
           {items.map((item, index) => {
             const isActive = activePage === item.page;
-            
             return (
               <motion.button
                 key={index}
                 onClick={() => setActivePage(item.page)}
                 whileHover={{ x: 4 }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all ${
-                  isActive
-                    ? 'bg-slate-900 text-white shadow-lg'
-                    : 'text-slate-700 hover:bg-slate-50'
+                  isActive ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-700 hover:bg-slate-50'
                 }`}
               >
                 <item.icon size={20} />
@@ -131,63 +136,22 @@ const DashboardLayout = () => {
           })}
         </div>
 
-        {/* Quick Stats in Sidebar */}
-        <div className="p-4 mt-4 border-t-2 border-slate-100">
-          <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-4 border-2 border-blue-100">
-            <div className="text-xs font-bold text-slate-500 mb-2">Quick Stats</div>
-            <div className="space-y-2">
-              {user?.role === 'faculty' ? (
-                <>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Total Students</span>
-                    <span className="text-sm font-bold text-slate-900">156</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Pending Grading</span>
-                    <span className="text-sm font-bold text-orange-600">24</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Avg Attendance</span>
-                    <span className="text-sm font-bold text-green-600">89%</span>
-                  </div>
-                </>
-              ) : user?.role === 'admin' ? (
-                <>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Total Users</span>
-                    <span className="text-sm font-bold text-slate-900">1,245</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Active Courses</span>
-                    <span className="text-sm font-bold text-blue-600">48</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">System Health</span>
-                    <span className="text-sm font-bold text-green-600">98%</span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Classes Today</span>
-                    <span className="text-sm font-bold text-slate-900">3</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Pending</span>
-                    <span className="text-sm font-bold text-orange-600">2</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-600">Attendance</span>
-                    <span className="text-sm font-bold text-green-600">94%</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+        {/* Profile & Settings at bottom */}
+        <div className="p-4 border-t border-slate-100 space-y-1">
+          <motion.button
+            onClick={() => setActivePage('profile')}
+            whileHover={{ x: 4 }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all ${
+              activePage === 'profile' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <GraduationCap size={20} />
+            <span>Profile</span>
+          </motion.button>
         </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <div className="ml-64 pt-16">
         {activePage === 'home' && renderHomePage()}
         
@@ -217,41 +181,20 @@ const DashboardLayout = () => {
   );
 };
 
-// Main App Component
+// Main App
 function App() {
+  useEffect(() => {
+    console.log('Firebase connected:', !!auth, !!db);
+  }, []);
+
   return (
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Public Routes - redirect to dashboard if logged in */}
-          <Route path="/" element={
-            <PublicRoute>
-              <Navbar />
-              <Landing />
-            </PublicRoute>
-          } />
-          <Route path="/login" element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          } />
-          <Route path="/register" element={
-            <PublicRoute>
-              <Register />
-            </PublicRoute>
-          } />
-          
-          {/* Protected Route - dashboard */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-              </ProtectedRoute>
-            }
-          />
-          
-          {/* Redirect all other routes */}
+          <Route path="/" element={<PublicRoute><Navbar /><Landing /></PublicRoute>} />
+          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+          <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+          <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
