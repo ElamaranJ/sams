@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   QrCode, Clock, Users, Calendar, CheckCircle, AlertCircle,
-  BookOpen, Loader, Copy, Shield, UserCheck, Hash, Mail, RefreshCw
+  BookOpen, Loader, Copy, Shield, UserCheck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
@@ -13,7 +13,6 @@ import {
   getClassAttendanceSessions,
   getSessionAttendees
 } from '../firebase/database';
-import { drawQR } from '../utils/qrGenerator';
 
 const AttendanceGenerate = () => {
   const { user } = useAuth();
@@ -31,8 +30,7 @@ const AttendanceGenerate = () => {
   const [loadingAttendees, setLoadingAttendees] = useState(false);
   const [selectedHistorySession, setSelectedHistorySession] = useState(null);
 
-  const qrCanvasRef = useRef(null);
-  const pollRef     = useRef(null);
+  const pollRef = useRef(null);
 
   // ── Fetch faculty classes ───────────────────────────────────────────────────
   useEffect(() => {
@@ -82,24 +80,6 @@ const AttendanceGenerate = () => {
     return () => clearInterval(timer);
   }, [timeRemaining]);
 
-  // ── Draw QR on canvas whenever generatedQR changes ─────────────────────────
-  useEffect(() => {
-    if (!generatedQR || !qrCanvasRef.current) return;
-    const payload = JSON.stringify({
-      sessionId:  generatedQR.sessionId,
-      courseCode: generatedQR.courseCode,
-      courseName: generatedQR.courseName,
-      otp:        generatedQR.otp,
-      validFor:   generatedQR.validFor,
-    });
-    drawQR(qrCanvasRef.current, payload, {
-      size: 220,
-      dark: '#1e3a8a',
-      light: '#ffffff',
-      margin: 2,
-    });
-  }, [generatedQR]);
-
   // ── Poll attendees every 5 s while session is live ─────────────────────────
   const startPollingAttendees = (sessionDocId) => {
     clearInterval(pollRef.current);
@@ -125,6 +105,7 @@ const AttendanceGenerate = () => {
     const sessionId = `${selectedCourse.code}-${Date.now()}`;
     const today = new Date().toISOString().split('T')[0];
 
+    // Create session in Database
     const result = await createAttendanceSession({
       classId:     selectedCourse.id,
       classCode:   selectedCourse.code,
@@ -138,18 +119,18 @@ const AttendanceGenerate = () => {
     });
 
     if (result.success) {
+      // Small data payload for the QR code
       const qrData = {
-        sessionId:  result.sessionId,  // Firestore doc ID
-        courseCode: selectedCourse.code,
-        courseName: selectedCourse.name,
+        sessionId:  result.sessionId, // This is the ID Scanner needs
         otp:        newOTP,
-        validFor:   `${qrDuration} minutes`,
       };
+      
       setOtp(newOTP);
       setGeneratedQR(qrData);
       setTimeRemaining(qrDuration * 60);
       startPollingAttendees(result.sessionId);
 
+      // Refresh history
       const histResult = await getClassAttendanceSessions(selectedCourse.id);
       if (histResult.success) setSessionHistory(histResult.sessions.slice(0, 15));
     } else {
@@ -169,7 +150,6 @@ const AttendanceGenerate = () => {
     return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
   };
 
-  // ── View attendees for a past session ──────────────────────────────────────
   const viewHistoryAttendees = async (session) => {
     if (selectedHistorySession?.id === session.id) {
       setSelectedHistorySession(null);
@@ -181,6 +161,14 @@ const AttendanceGenerate = () => {
     const res = await getSessionAttendees(session.id);
     if (res.success) setAttendees(res.attendees);
     setLoadingAttendees(false);
+  };
+
+  // ── Helper to generate QR Image URL ──
+  const getQRUrl = (data) => {
+    if (!data) return '';
+    // We use a reliable public API to generate the QR image
+    const jsonString = JSON.stringify(data);
+    return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(jsonString)}`;
   };
 
   // ── Attendees table ────────────────────────────────────────────────────────
@@ -212,7 +200,6 @@ const AttendanceGenerate = () => {
               <tr className="bg-slate-100 text-slate-600 font-bold">
                 <th className="px-3 py-2 text-left">#</th>
                 <th className="px-3 py-2 text-left">Name</th>
-                <th className="px-3 py-2 text-left">Roll No</th>
                 <th className="px-3 py-2 text-left">Email</th>
                 <th className="px-3 py-2 text-left">Method</th>
                 <th className="px-3 py-2 text-left">Time</th>
@@ -223,7 +210,6 @@ const AttendanceGenerate = () => {
                 <tr key={a.id} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                   <td className="px-3 py-2 text-slate-400 font-mono">{i + 1}</td>
                   <td className="px-3 py-2 font-semibold text-slate-900">{a.studentName || '—'}</td>
-                  <td className="px-3 py-2 font-mono text-blue-700 font-bold">{a.studentRollNo || '—'}</td>
                   <td className="px-3 py-2 text-slate-600">{a.studentEmail || '—'}</td>
                   <td className="px-3 py-2">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
@@ -318,11 +304,15 @@ const AttendanceGenerate = () => {
                         <p className="text-sm text-slate-600">Session expires in</p>
                       </div>
 
-                      {/* Real QR Code */}
-                      <div className="bg-white rounded-2xl p-4 mb-4 flex flex-col items-center border-2 border-blue-100">
-                        <canvas ref={qrCanvasRef} className="rounded-xl" />
+                      {/* Real QR Code - Using API Image */}
+                      <div className="bg-white rounded-2xl p-4 mb-4 flex flex-col items-center border-2 border-blue-100 shadow-sm">
+                        <img 
+                          src={getQRUrl(generatedQR)}
+                          alt="Attendance QR"
+                          className="w-full max-w-[220px] h-auto rounded-lg"
+                        />
                         <p className="text-xs text-slate-400 font-semibold mt-2">
-                          Session: …{generatedQR.sessionId?.slice(-8)}
+                          Scan with Student App
                         </p>
                       </div>
 
@@ -395,13 +385,9 @@ const AttendanceGenerate = () => {
                           <div className="flex items-center gap-4 text-xs text-slate-500">
                             <span className="flex items-center gap-1"><Calendar size={12} />{session.date || session.createdAt?.split('T')[0]}</span>
                             <span className="flex items-center gap-1"><Clock size={12} />{session.duration} min</span>
-                            <span className="flex items-center gap-1 text-blue-600 font-semibold">
-                              <Users size={12} /> View who attended
-                            </span>
                           </div>
                         </button>
 
-                        {/* Expanded attendees for this history session */}
                         <AnimatePresence>
                           {selectedHistorySession?.id === session.id && (
                             <motion.div
@@ -425,24 +411,6 @@ const AttendanceGenerate = () => {
                   </div>
                 )}
               </Card>
-
-              <Card className="p-6 mt-6 bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
-                <h3 className="text-lg font-black text-slate-900 mb-3">How it works 📋</h3>
-                <div className="space-y-2 text-sm text-slate-700">
-                  {[
-                    'Generate QR + OTP for your class',
-                    'Display QR on screen — students scan it with their phone camera',
-                    'Or share OTP verbally — students enter it manually',
-                    'Watch attendance fill in live below the QR',
-                    'Click any past session to see who attended (name, roll no, email)',
-                  ].map((t, i) => (
-                    <div key={i} className="flex gap-2 items-start">
-                      <CheckCircle size={14} className="text-green-600 mt-0.5 flex-shrink-0" />
-                      <span>{t}</span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
             </div>
           </div>
         )}
@@ -451,4 +419,4 @@ const AttendanceGenerate = () => {
   );
 };
 
-export default AttendanceGenerate;  
+export default AttendanceGenerate;
