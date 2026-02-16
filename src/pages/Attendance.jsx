@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { QrCode, CheckCircle, Clock, Calendar, BookOpen, Loader, Hash, Shield, AlertCircle, TrendingUp, Camera } from 'lucide-react';
+import { 
+  CheckCircle, Clock, Calendar, Loader, Shield, 
+  AlertCircle, TrendingUp, Camera 
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/shared/GlassCard';
 import Button from '../components/ui/Button';
@@ -17,11 +20,11 @@ const Attendance = () => {
   const [showScanner, setShowScanner] = useState(false);
   
   // Mark attendance form
-  const [sessionId, setSessionId] = useState('');
   const [otpInput, setOtpInput] = useState('');
   const [marking, setMarking] = useState(false);
   const [markSuccess, setMarkSuccess] = useState(false);
   const [markError, setMarkError] = useState('');
+  const [successDetails, setSuccessDetails] = useState(null);
 
   const fetchAttendance = async () => {
     if (!user?.uid) return;
@@ -34,82 +37,64 @@ const Attendance = () => {
   useEffect(() => { fetchAttendance(); }, [user]);
 
   const handleMarkAttendance = async () => {
-    if (!sessionId.trim()) { setMarkError('Please enter the Session ID from your faculty.'); return; }
-    if (!otpInput.trim() || otpInput.length !== 6) { setMarkError('Please enter the 6-digit OTP.'); return; }
+    // 1. Validate Input
+    if (!otpInput.trim() || otpInput.length !== 6) { 
+      setMarkError('Please enter the 6-digit OTP.'); 
+      return; 
+    }
     
     setMarking(true);
     setMarkError('');
+    setSuccessDetails(null);
 
     try {
-      // First verify the OTP matches the session
-      const sessionSnap = await getDocs(query(
+      // 2. Find the session using ONLY the OTP
+      // We search the 'attendance_sessions' collection for a document with this OTP
+      const q = query(
         collection(db, 'attendance_sessions'),
-        where('sessionId', '==', sessionId.trim())
-      ));
-
-      if (sessionSnap.empty) {
-        // Try by document ID
-        const { getDoc, doc } = await import('firebase/firestore');
-        const sessionDoc = await getDoc(doc(db, 'attendance_sessions', sessionId.trim()));
-        if (!sessionDoc.exists()) {
-          setMarkError('Session not found. Please check the Session ID.');
-          setMarking(false);
-          return;
-        }
-        const session = sessionDoc.data();
-        // Check OTP
-        if (session.otp !== otpInput.trim()) {
-          setMarkError('Incorrect OTP. Please try again.');
-          setMarking(false);
-          return;
-        }
-        // Check expiry
-        const expiresAt = new Date(session.expiresAt);
-        if (new Date() > expiresAt) {
-          setMarkError('This session has expired.');
-          setMarking(false);
-          return;
-        }
-        // Mark attendance
-        const result = await markAttendance(sessionDoc.id, user.uid);
-        if (result.success) {
-          setMarkSuccess(true);
-          setSessionId('');
-          setOtpInput('');
-          fetchAttendance();
-          setTimeout(() => setMarkSuccess(false), 5000);
-        } else {
-          setMarkError(result.error || 'Failed to mark attendance.');
-        }
-      } else {
-        const sessionDoc = sessionSnap.docs[0];
-        const session = sessionDoc.data();
-        if (session.otp !== otpInput.trim()) {
-          setMarkError('Incorrect OTP. Please try again.');
-          setMarking(false);
-          return;
-        }
-        const expiresAt = new Date(session.expiresAt);
-        if (new Date() > expiresAt) {
-          setMarkError('This session has expired.');
-          setMarking(false);
-          return;
-        }
-        const result = await markAttendance(sessionDoc.id, user.uid);
-        if (result.success) {
-          setMarkSuccess(true);
-          setSessionId('');
-          setOtpInput('');
-          fetchAttendance();
-          setTimeout(() => setMarkSuccess(false), 5000);
-        } else {
-          setMarkError(result.error || 'Failed to mark attendance.');
-        }
+        where('otp', '==', otpInput.trim())
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        setMarkError('Invalid OTP. Please check the code and try again.');
+        setMarking(false);
+        return;
       }
+
+      // 3. Check if the session is expired
+      const now = new Date();
+      // We take the first matching session (OTPs should ideally be unique active)
+      const sessionDoc = querySnapshot.docs[0];
+      const sessionData = sessionDoc.data();
+      const expiresAt = new Date(sessionData.expiresAt);
+
+      if (now > expiresAt) {
+        setMarkError('This OTP has expired. Ask faculty for a new one.');
+        setMarking(false);
+        return;
+      }
+
+      // 4. Mark the attendance using the Session ID found
+      const result = await markAttendance(sessionDoc.id, user.uid);
+      
+      if (result.success) {
+        setMarkSuccess(true);
+        setSuccessDetails(`Class: ${sessionData.className || sessionData.classCode}`);
+        setOtpInput('');
+        fetchAttendance(); // Refresh the list
+        setTimeout(() => setMarkSuccess(false), 5000);
+      } else {
+        setMarkError(result.error || 'Failed to mark attendance.');
+      }
+
     } catch (err) {
-      setMarkError('Error: ' + err.message);
+      console.error(err);
+      setMarkError('System Error: ' + err.message);
+    } finally {
+      setMarking(false);
     }
-    setMarking(false);
   };
 
   const presentCount = attendance.filter(a => a.status === 'present').length;
@@ -131,10 +116,10 @@ const Attendance = () => {
       <div className="max-w-4xl mx-auto px-6 py-24">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
           <h1 className="text-4xl font-black text-slate-900 mb-2">Attendance 📱</h1>
-          <p className="text-lg text-slate-600">Mark your attendance using QR code and OTP</p>
+          <p className="text-lg text-slate-600">Mark your attendance easily</p>
         </motion.div>
 
-        {/* Stats */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-3 gap-6 mb-8">
           <Card className="p-6">
             <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center mb-3 shadow-lg">
@@ -147,14 +132,14 @@ const Attendance = () => {
             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-3 shadow-lg">
               <TrendingUp size={22} className="text-white" />
             </div>
-            <div className="text-sm font-bold text-slate-500 mb-1">Attendance Rate</div>
+            <div className="text-sm font-bold text-slate-500 mb-1">Rate</div>
             <div className="text-3xl font-black text-slate-900">{attendance.length > 0 ? `${attendanceRate}%` : '—'}</div>
           </Card>
           <Card className="p-6">
             <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center mb-3 shadow-lg">
               <Calendar size={22} className="text-white" />
             </div>
-            <div className="text-sm font-bold text-slate-500 mb-1">Total Sessions</div>
+            <div className="text-sm font-bold text-slate-500 mb-1">Total</div>
             <div className="text-3xl font-black text-slate-900">{attendance.length}</div>
           </Card>
         </div>
@@ -182,15 +167,15 @@ const Attendance = () => {
                   className="p-4 mb-4 bg-green-50 border-2 border-green-200 rounded-xl flex items-center gap-3">
                   <CheckCircle className="text-green-600" size={24} />
                   <div>
-                    <p className="text-green-700 font-bold">Attendance marked successfully! ✅</p>
-                    <p className="text-green-600 text-sm">Your attendance has been recorded.</p>
+                    <p className="text-green-700 font-bold">Marked Successfully! 🎉</p>
+                    {successDetails && <p className="text-green-600 text-sm">{successDetails}</p>}
                   </div>
                 </motion.div>
               )}
 
               {markError && (
                 <div className="p-4 mb-4 bg-red-50 border-2 border-red-200 rounded-xl flex items-center gap-3">
-                  <AlertCircle className="text-red-600" size={20} />
+                  <AlertCircle className="text-red-600 shrink-0" size={20} />
                   <p className="text-red-700 font-semibold">{markError}</p>
                 </div>
               )}
@@ -209,26 +194,23 @@ const Attendance = () => {
                 <div className="relative flex justify-center"><span className="px-3 bg-white text-slate-400 text-sm font-bold">OR enter OTP manually</span></div>
               </div>
 
-              {/* ── Option 2: OTP ── */}
+              {/* ── Option 2: OTP ONLY ── */}
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-bold text-slate-700 mb-2 block">Session ID</label>
-                  <input type="text" value={sessionId} onChange={e => { setSessionId(e.target.value); setMarkError(''); }}
-                    placeholder="Enter session ID from faculty"
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl font-medium focus:outline-none focus:border-blue-500" />
-                  <p className="text-xs text-slate-500 mt-1">Your faculty will display the Session ID on the board.</p>
-                </div>
-
-                <div>
                   <label className="text-sm font-bold text-slate-700 mb-2 block">6-Digit OTP</label>
-                  <input type="text" value={otpInput} onChange={e => { setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6)); setMarkError(''); }}
-                    placeholder="Enter OTP (e.g., 123456)" maxLength={6}
-                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl font-medium focus:outline-none focus:border-blue-500 tracking-widest text-center text-2xl font-black" />
-                  <p className="text-xs text-slate-500 mt-1">Your faculty will tell you this 6-digit OTP verbally.</p>
+                  <input 
+                    type="text" 
+                    value={otpInput} 
+                    onChange={e => { setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6)); setMarkError(''); }}
+                    placeholder="Enter OTP (e.g., 123456)" 
+                    maxLength={6}
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl font-medium focus:outline-none focus:border-blue-500 tracking-widest text-center text-2xl font-black" 
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Enter the code shown on the faculty screen.</p>
                 </div>
 
                 <Button variant="primary" fullWidth icon={CheckCircle} onClick={handleMarkAttendance} disabled={marking}>
-                  {marking ? 'Marking...' : 'Mark Attendance with OTP'}
+                  {marking ? 'Verifying...' : 'Submit OTP'}
                 </Button>
               </div>
             </Card>
@@ -236,21 +218,11 @@ const Attendance = () => {
             <Card className="p-6 bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
               <h3 className="text-lg font-black text-slate-900 mb-4 flex items-center gap-2">
                 <Shield size={20} className="text-blue-600" />
-                How to Mark Attendance
+                Troubleshooting
               </h3>
               <div className="space-y-3 text-sm text-slate-700">
-                <div className="flex gap-3 p-3 bg-white rounded-xl">
-                  <span className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">1</span>
-                  <p><strong>QR Scan (easiest):</strong> Click "Scan QR Code" and point your camera at the faculty's screen</p>
-                </div>
-                <div className="flex gap-3 p-3 bg-white rounded-xl">
-                  <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">2</span>
-                  <p><strong>OTP Method:</strong> Get the Session ID from faculty's screen and OTP verbally</p>
-                </div>
-                <div className="flex gap-3 p-3 bg-white rounded-xl">
-                  <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">3</span>
-                  <p>Enter Session ID + OTP below and click <strong>"Mark Attendance with OTP"</strong></p>
-                </div>
+                <p><strong>Camera not working?</strong><br/>Make sure you are using a secure connection (HTTPS) or localhost. Browsers block cameras on insecure IP addresses.</p>
+                <p><strong>OTP Invalid?</strong><br/>Ask your faculty to refresh their screen. OTPs expire after 10-15 minutes.</p>
               </div>
             </Card>
           </div>
@@ -276,8 +248,8 @@ const Attendance = () => {
             {attendance.length === 0 ? (
               <Card className="p-12 text-center">
                 <Clock size={48} className="text-slate-300 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-slate-900 mb-2">No Attendance Records</h3>
-                <p className="text-slate-600">Your attendance history will appear here after you mark attendance.</p>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">No Records</h3>
+                <p className="text-slate-600">You haven't marked any attendance yet.</p>
               </Card>
             ) : (
               <Card className="overflow-hidden">
