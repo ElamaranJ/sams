@@ -1,11 +1,13 @@
 import { auth, db } from './firebase';
 import { useEffect, useState } from 'react';
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home, BookOpen, Calendar, FileText, Award, QrCode,
-  Users, BarChart3, Settings, Edit, Plus, GraduationCap
+  Users, BarChart3, Settings, Edit, Plus,
+  ChevronRight, Bell, Search, LogOut, X, User,
+  GraduationCap
 } from 'lucide-react';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -35,38 +37,67 @@ import ScheduleManagement from './pages/ScheduleManagement';
 
 import Navbar from './components/layout/Navbar';
 
-// Protected Route Component
+// ── Protected Route ──────────────────────────────────────────────────────────
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return null;
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
-// Public Route Component (redirects to dashboard if already logged in)
+// ── Public Route ─────────────────────────────────────────────────────────────
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return null;
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
   return children;
 };
 
-// ==========================================
-// MAIN DASHBOARD LAYOUT ARCHITECTURE
-// ==========================================
+// ══════════════════════════════════════════════════════════════════════════════
+//  DASHBOARD LAYOUT — professional light glassmorphism
+// ══════════════════════════════════════════════════════════════════════════════
 const DashboardLayout = () => {
-  const { user } = useAuth();
-  const [activePage, setActivePage] = useState('home');
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
-  // Unified Menu Configuration
+  const [activePage, setActivePage] = useState('home');
+  const [collapsed, setCollapsed] = React.useState(false);
+  const [expandedGroup, setExpandedGroup] = React.useState('home');
+  const [showNotifs, setShowNotifs] = React.useState(false);
+  const [showUserMenu, setShowUserMenu] = React.useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      // ProtectedRoute redirects automatically when isAuthenticated → false
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  // ── Menu config ────────────────────────────────────────────────────────────
   const menuItems = {
     student: [
-      { icon: Home, label: 'Dashboard', page: 'home' },
+      {
+        icon: Home, label: 'Dashboard', page: 'home',
+        sub: [
+          { label: 'Overview', page: 'home' },
+          { label: 'Calendar', page: 'calendar' },
+          { label: 'Grades', page: 'grades' },
+        ],
+      },
       { icon: BookOpen, label: 'My Classes', page: 'classes' },
-      { icon: Calendar, label: 'Calendar', page: 'calendar' },
       { icon: FileText, label: 'Assignments', page: 'assignments' },
-      { icon: Award, label: 'Grades', page: 'grades' },
       { icon: QrCode, label: 'Attendance', page: 'attendance' },
+      { icon: Award, label: 'Grades', page: 'grades' },
     ],
     faculty: [
-      { icon: Home, label: 'Dashboard', page: 'home' },
+      {
+        icon: Home, label: 'Dashboard', page: 'home',
+        sub: [
+          { label: 'Overview', page: 'home' },
+          { label: 'Reports', page: 'reports' },
+        ],
+      },
       { icon: BookOpen, label: 'My Classes', page: 'classes' },
       { icon: Users, label: 'Students', page: 'students' },
       { icon: Plus, label: 'Create Assignment', page: 'create-assignment' },
@@ -75,7 +106,13 @@ const DashboardLayout = () => {
       { icon: BarChart3, label: 'Reports', page: 'reports' },
     ],
     admin: [
-      { icon: Home, label: 'Dashboard', page: 'home' },
+      {
+        icon: Home, label: 'Dashboard', page: 'home',
+        sub: [
+          { label: 'Overview', page: 'home' },
+          { label: 'Reports', page: 'reports' },
+        ],
+      },
       { icon: Users, label: 'Users', page: 'users' },
       { icon: BookOpen, label: 'Courses', page: 'courses' },
       { icon: Calendar, label: 'Schedule', page: 'schedule' },
@@ -86,131 +123,372 @@ const DashboardLayout = () => {
 
   const items = menuItems[user?.role] || menuItems.student;
 
-  // Render Logic for Home Dashboards
   const renderHomePage = () => {
     switch (user?.role) {
-      case 'faculty': 
-        return <FacultyDashboard onNavigate={setActivePage} />;
-      case 'student': 
-        // FIX: Enabled onNavigate for Student Dashboard to make buttons work
-        return <StudentDashboard onNavigate={setActivePage} />; 
-      case 'admin': 
-        return <AdminDashboard onNavigate={setActivePage} />;
-      default: 
-        return <StudentDashboard onNavigate={setActivePage} />;
+      case 'faculty': return <FacultyDashboard onNavigate={setActivePage} />;
+      case 'admin': return <AdminDashboard onNavigate={setActivePage} />;
+      default: return <StudentDashboard onNavigate={setActivePage} />;
     }
   };
 
-  // Visual Identity Logic
-  const roleColor = user?.role === 'admin' ? 'from-red-500 to-red-600'
-    : user?.role === 'faculty' ? 'from-blue-500 to-purple-600'
-    : 'from-blue-600 to-indigo-600'; // Synced Student color to professional blue
+  const roleInitial = user?.name?.charAt(0)?.toUpperCase() || '?';
+  const W = collapsed ? '68px' : '256px';
 
-  const roleLabel = user?.role === 'admin' ? '🎛️ Admin'
-    : user?.role === 'faculty' ? '👨‍🏫 Faculty'
-    : '👨‍🎓 Student';
+  const notifications = [
+    { id: 1, text: 'Attendance window is now open', time: '2 min ago', color: '#10b981' },
+    { id: 2, text: 'Assignment deadline tomorrow', time: '1 hr ago', color: '#f59e0b' },
+    { id: 3, text: 'New grade posted for CS101', time: '3 hrs ago', color: '#6366f1' },
+  ];
+
+  const pageTitle = items.find(i => i.page === activePage)?.label ||
+    items.flatMap(i => i.sub || []).find(s => s.page === activePage)?.label ||
+    'Dashboard';
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navbar onNavigate={setActivePage} />
-      
-      {/* GLOBAL SIDEBAR */}
-      <div className="fixed left-0 top-16 bottom-0 w-64 bg-white border-r-2 border-slate-100 overflow-y-auto z-40">
-        <div className="p-4 border-b border-slate-100">
-          <div className={`bg-gradient-to-br ${roleColor} rounded-xl p-4 text-white shadow-lg`}>
-            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center mb-2 font-black text-lg">
-              {user?.name?.charAt(0) || '?'}
+    <div
+      className="min-h-screen flex"
+      style={{ fontFamily: "'Inter', sans-serif", background: '#f8fafc' }}
+    >
+      {/* ══ SIDEBAR ══ */}
+      <motion.aside
+        animate={{ width: W }}
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+        className="fixed left-0 top-0 bottom-0 z-50 flex flex-col overflow-hidden"
+        style={{
+          background: 'rgba(255,255,255,0.85)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderRight: '1px solid #e2e8f0',
+          boxShadow: '4px 0 24px rgba(0,0,0,0.04)',
+        }}
+      >
+        {/* Logo */}
+        <div className={`flex items-center gap-3 px-4 py-5 border-b border-slate-100 ${collapsed ? 'justify-center' : ''}`}>
+          <div className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}>
+            <GraduationCap size={16} className="text-white" />
+          </div>
+          {!collapsed && (
+            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="font-bold text-slate-800 text-base tracking-tight">
+              SAMS
+            </motion.span>
+          )}
+          {!collapsed && (
+            <button onClick={() => setCollapsed(true)}
+              className="ml-auto w-6 h-6 rounded-md hover:bg-slate-100 flex items-center justify-center transition-colors">
+              <ChevronRight size={14} className="text-slate-400 rotate-180" />
+            </button>
+          )}
+        </div>
+
+        {collapsed && (
+          <button onClick={() => setCollapsed(false)}
+            className="mx-auto mt-3 w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors">
+            <ChevronRight size={14} className="text-slate-400" />
+          </button>
+        )}
+
+        {/* User info */}
+        {!collapsed && (
+          <div className="px-4 py-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold text-sm shrink-0"
+                style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}>
+                {roleInitial}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-800 truncate">{user?.name}</p>
+                <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
+              </div>
             </div>
-            <div className="font-bold text-sm truncate">{user?.name}</div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-white/80">{roleLabel}</div>
+          </div>
+        )}
+
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5" style={{ scrollbarWidth: 'none' }}>
+          {!collapsed && (
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-2 mb-2">Navigation</p>
+          )}
+          {items.map((item, i) => {
+            const isActive = activePage === item.page || item.sub?.some(s => s.page === activePage);
+            const isExpanded = expandedGroup === item.page && item.sub;
+            return (
+              <div key={i}>
+                <button
+                  onClick={() => {
+                    if (item.sub) {
+                      setExpandedGroup(isExpanded ? null : item.page);
+                      setActivePage(item.page);
+                    } else {
+                      setActivePage(item.page);
+                      setExpandedGroup(null);
+                    }
+                  }}
+                  title={collapsed ? item.label : ''}
+                  className={`w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${collapsed ? 'justify-center' : ''}`}
+                  style={isActive
+                    ? { background: 'rgba(79,70,229,0.08)', color: '#4f46e5' }
+                    : { color: '#64748b' }
+                  }
+                >
+                  <div className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                    style={isActive
+                      ? { background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', boxShadow: '0 2px 8px rgba(79,70,229,0.3)' }
+                      : { background: '#f1f5f9' }
+                    }>
+                    <item.icon size={15} style={{ color: isActive ? '#fff' : '#94a3b8' }} />
+                  </div>
+                  {!collapsed && (
+                    <>
+                      <span className="flex-1 text-left">{item.label}</span>
+                      {item.sub && (
+                        <motion.div animate={{ rotate: isExpanded ? 90 : 0 }} transition={{ duration: 0.2 }}>
+                          <ChevronRight size={13} className="text-slate-300" />
+                        </motion.div>
+                      )}
+                    </>
+                  )}
+                </button>
+
+                {!collapsed && item.sub && (
+                  <motion.div
+                    initial={false}
+                    animate={{ height: isExpanded ? 'auto' : 0, opacity: isExpanded ? 1 : 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="ml-10 mt-0.5 space-y-0.5 pb-1">
+                      {item.sub.map((sub, j) => (
+                        <button key={j} onClick={() => setActivePage(sub.page)}
+                          className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all"
+                          style={activePage === sub.page
+                            ? { color: '#4f46e5', background: 'rgba(79,70,229,0.06)' }
+                            : { color: '#94a3b8' }
+                          }>
+                          {sub.label}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* Bottom actions */}
+        <div className="px-3 pb-4 space-y-1 border-t border-slate-100 pt-3">
+          <button
+            onClick={() => { setActivePage('settings'); }}
+            title={collapsed ? 'Settings' : ''}
+            className={`w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-all ${collapsed ? 'justify-center' : ''}`}
+          >
+            <div className="shrink-0 w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center">
+              <Settings size={15} className="text-slate-400" />
+            </div>
+            {!collapsed && <span>Settings</span>}
+          </button>
+
+          <button
+            onClick={handleLogout}
+            title={collapsed ? 'Sign out' : ''}
+            className={`w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all ${collapsed ? 'justify-center' : ''}`}
+          >
+            <div className="shrink-0 w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center">
+              <LogOut size={15} className="text-slate-400" />
+            </div>
+            {!collapsed && <span>Sign out</span>}
+          </button>
+        </div>
+      </motion.aside>
+
+      {/* ══ MAIN CONTENT ══ */}
+      <motion.div
+        animate={{ marginLeft: W }}
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+        className="flex-1 min-h-screen flex flex-col"
+      >
+        {/* Top Bar */}
+        <div
+          className="sticky top-0 z-40 px-6 py-3.5 flex items-center justify-between"
+          style={{
+            background: 'rgba(255,255,255,0.85)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            borderBottom: '1px solid #e2e8f0',
+          }}
+        >
+          <div>
+            <h1 className="text-base font-semibold text-slate-800">{pageTitle}</h1>
+            <p className="text-xs text-slate-400">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {/* Search */}
+            <button className="p-2 rounded-xl hover:bg-slate-100 transition-colors">
+              <Search size={17} className="text-slate-500" />
+            </button>
+
+            {/* Notifications */}
+            <div className="relative">
+              <button
+                onClick={() => { setShowNotifs(!showNotifs); setShowUserMenu(false); }}
+                className="relative p-2 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                <Bell size={17} className="text-slate-500" />
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
+              </button>
+
+              <AnimatePresence>
+                {showNotifs && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-12 w-80 rounded-2xl overflow-hidden z-50"
+                    style={{
+                      background: 'rgba(255,255,255,0.95)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 20px 60px rgba(0,0,0,0.12)',
+                    }}
+                  >
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                      <span className="text-sm font-semibold text-slate-800">Notifications</span>
+                      <button onClick={() => setShowNotifs(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                        <X size={15} />
+                      </button>
+                    </div>
+                    <div className="divide-y divide-slate-50">
+                      {notifications.map(n => (
+                        <div key={n.id} className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
+                          <div className="w-2 h-2 rounded-full mt-2 shrink-0" style={{ background: n.color }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-700 leading-snug">{n.text}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">{n.time}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-4 py-2.5 border-t border-slate-100">
+                      <button className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">
+                        Mark all as read
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* User menu */}
+            <div className="relative ml-1">
+              <button
+                onClick={() => { setShowUserMenu(!showUserMenu); setShowNotifs(false); }}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-sm transition-all hover:opacity-90 ring-2 ring-white"
+                style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
+              >
+                {roleInitial}
+              </button>
+
+              <AnimatePresence>
+                {showUserMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-11 w-52 rounded-2xl overflow-hidden z-50"
+                    style={{
+                      background: 'rgba(255,255,255,0.95)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 20px 60px rgba(0,0,0,0.12)',
+                    }}
+                  >
+                    <div className="px-4 py-3 border-b border-slate-100">
+                      <p className="text-sm font-semibold text-slate-800 truncate">{user?.name}</p>
+                      <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
+                    </div>
+                    <button onClick={() => { setActivePage('profile'); setShowUserMenu(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-all font-medium">
+                      <User size={15} /> Profile
+                    </button>
+                    <button onClick={() => { setActivePage('settings'); setShowUserMenu(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-all font-medium">
+                      <Settings size={15} /> Settings
+                    </button>
+                    <div className="border-t border-slate-100">
+                      <button onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 hover:text-red-600 transition-all font-medium">
+                        <LogOut size={15} /> Sign out
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
 
-        <div className="p-4 space-y-1">
-          {items.map((item, index) => {
-            const isActive = activePage === item.page;
-            return (
-              <motion.button
-                key={index}
-                onClick={() => setActivePage(item.page)}
-                whileHover={{ x: 4 }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-black text-sm transition-all ${
-                  isActive ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <item.icon size={20} className={isActive ? 'text-blue-400' : ''} />
-                <span>{item.label}</span>
-              </motion.button>
-            );
-          })}
+        {/* Page Content */}
+        <div className="flex-1 p-6 pb-10">
+          {activePage === 'home' && renderHomePage()}
+
+          {activePage === 'classes' && (
+            user?.role === 'faculty'
+              ? <FacultyClasses onNavigate={setActivePage} />
+              : <Classes onNavigate={setActivePage} />
+          )}
+          {activePage === 'assignments' && (
+            user?.role === 'student'
+              ? <AssignmentUpload onNavigate={setActivePage} />
+              : <AssignmentEvaluation onNavigate={setActivePage} />
+          )}
+          {activePage === 'attendance' && <Attendance onNavigate={setActivePage} />}
+
+          {user?.role === 'faculty' && (
+            <>
+              {activePage === 'create-assignment' && <AssignmentCreate onNavigate={setActivePage} />}
+              {activePage === 'evaluate' && <AssignmentEvaluation onNavigate={setActivePage} />}
+              {activePage === 'generate-qr' && <AttendanceGenerate onNavigate={setActivePage} />}
+              {activePage === 'students' && <Students onNavigate={setActivePage} />}
+            </>
+          )}
+          {user?.role === 'admin' && (
+            <>
+              {activePage === 'users' && <UserManagement onNavigate={setActivePage} />}
+              {activePage === 'courses' && <CourseManagement onNavigate={setActivePage} />}
+              {activePage === 'schedule' && <ScheduleManagement onNavigate={setActivePage} />}
+            </>
+          )}
+
+          {activePage === 'calendar' && <CalendarPage onNavigate={setActivePage} />}
+          {activePage === 'grades' && <Grades onNavigate={setActivePage} />}
+          {activePage === 'reports' && <Reports onNavigate={setActivePage} />}
+          {activePage === 'settings' && <SettingsPage onNavigate={setActivePage} />}
+          {activePage === 'profile' && <Profile onNavigate={setActivePage} />}
         </div>
+      </motion.div>
 
-        <div className="p-4 border-t border-slate-100 space-y-1">
-          <motion.button
-            onClick={() => setActivePage('profile')}
-            whileHover={{ x: 4 }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-black text-sm transition-all ${
-              activePage === 'profile' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            <GraduationCap size={20} />
-            <span>Academic Profile</span>
-          </motion.button>
-        </div>
-      </div>
-
-      {/* DYNAMIC VIEWPORT */}
-      <div className="ml-64 pt-16">
-        {activePage === 'home' && renderHomePage()}
-        
-        {/* SHARED NAVIGABLE VIEWS */}
-        {activePage === 'classes' && (
-           user?.role === 'faculty' 
-            ? <FacultyClasses onNavigate={setActivePage} /> 
-            : <Classes onNavigate={setActivePage} />
-        )}
-        
-        {activePage === 'assignments' && (
-           user?.role === 'student' 
-            ? <AssignmentUpload onNavigate={setActivePage} /> 
-            : <AssignmentEvaluation onNavigate={setActivePage} />
-        )}
-
-        {activePage === 'attendance' && <Attendance onNavigate={setActivePage} />}
-        
-        {/* FACULTY EXCLUSIVE VIEWS */}
-        {user?.role === 'faculty' && (
-          <>
-            {activePage === 'create-assignment' && <AssignmentCreate onNavigate={setActivePage} />}
-            {activePage === 'evaluate' && <AssignmentEvaluation onNavigate={setActivePage} />}
-            {activePage === 'generate-qr' && <AttendanceGenerate onNavigate={setActivePage} />}
-            {activePage === 'students' && <Students onNavigate={setActivePage} />}
-          </>
-        )}
-
-        {/* ADMIN EXCLUSIVE VIEWS */}
-        {user?.role === 'admin' && (
-          <>
-            {activePage === 'users' && <UserManagement onNavigate={setActivePage} />}
-            {activePage === 'courses' && <CourseManagement onNavigate={setActivePage} />}
-            {activePage === 'schedule' && <ScheduleManagement onNavigate={setActivePage} />}
-          </>
-        )}
-
-        {/* UTILITY VIEWS */}
-        {activePage === 'calendar' && <CalendarPage onNavigate={setActivePage} />}
-        {activePage === 'grades' && <Grades onNavigate={setActivePage} />}
-        {activePage === 'reports' && <Reports onNavigate={setActivePage} />}
-        {activePage === 'settings' && <SettingsPage onNavigate={setActivePage} />}
-        {activePage === 'profile' && <Profile onNavigate={setActivePage} />}
-      </div>
+      {/* Click-outside overlay */}
+      {(showNotifs || showUserMenu) && (
+        <div className="fixed inset-0 z-30"
+          onClick={() => { setShowNotifs(false); setShowUserMenu(false); }} />
+      )}
     </div>
   );
 };
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  APP ROOT
+// ══════════════════════════════════════════════════════════════════════════════
 function App() {
   useEffect(() => {
-    console.log('SAMS System Core Initialized:', !!auth, !!db);
+    console.log('SAMS initialized:', !!auth, !!db);
   }, []);
 
   return (

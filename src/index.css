@@ -1,8 +1,99 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Spinner (used by Button component) ─────────────────────────────────── */
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Ripple (used by Button component) ──────────────────────────────────── */
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(0);
+  animation: ripple-anim 0.6s linear;
+  pointer-events: none;
+}
+
+@keyframes ripple-anim {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+
+/* ==========================================
+   NEW DESIGN SYSTEM - VIBRANT & MODERN
+   ========================================== */
+
+:root {
+  /* Vibrant Color Palette */
+  --electric-blue: #0EA5E9;
+  --vibrant-purple: #8B5CF6;
+  --neon-pink: #EC4899;
+  --cyber-green: #10B981;
+  --sunset-orange: #F59E0B;
+
+  /* Neutrals */
+  --dark-900: #0F172A;
+  --dark-800: #1E293B;
+  --dark-700: #334155;
+  --light-100: #F1F5F9;
+  --light-50: #F8FAFC;
+  --white: #FFFFFF;
+
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-electric: linear-gradient(135deg, #0EA5E9 0%, #3B82F6 100%);
+  --gradient-purple: linear-gradient(135deg, #8B5CF6 0%, #A855F7 100%);
+  --gradient-pink: linear-gradient(135deg, #EC4899 0%, #F472B6 100%);
+  --gradient-green: linear-gradient(135deg, #10B981 0%, #34D399 100%);
+  --gradient-sunset: linear-gradient(135deg, #F59E0B 0%, #FBBF24 100%);
+  --gradient-danger: linear-gradient(135deg, #EF4444 0%, #F87171 100%);
+  --gradient-ocean: linear-gradient(135deg, #06B6D4 0%, #3B82F6 50%, #8B5CF6 100%);
+
+  /* Neumorphic Shadows */
+  --neomorph-light: #e0e5ec;
+  --neomorph-shadow-1: #a3b1c6;
+  --neomorph-shadow-2: #ffffff;
+
+  /* Premium Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.15);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.2);
+  --shadow-glow-blue: 0 0 30px rgba(14, 165, 233, 0.4);
+  --shadow-glow-purple: 0 0 30px rgba(139, 92, 246, 0.4);
+  --shadow-glow-pink: 0 0 30px rgba(236, 72, 153, 0.4);
+
+  /* Animation Timings */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 600ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
 
 * {
   margin: 0;
@@ -11,26 +102,566 @@
 }
 
 body {
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  background: var(--light-50);
+  min-height: 100vh;
 }
 
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+}
+
+code,
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ==========================================
+   PREMIUM SCROLLBAR
+   ========================================== */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--light-100);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.5);
-  border-radius: 4px;
+  background: var(--gradient-primary);
+  border-radius: 10px;
+  border: 2px solid var(--light-100);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 92, 246, 0.7);
+  background: var(--gradient-purple);
+}
+
+/* ==========================================
+   NEUMORPHISM
+   ========================================== */
+.neomorph {
+  background: var(--neomorph-light);
+  border-radius: 24px;
+  box-shadow:
+    12px 12px 24px var(--neomorph-shadow-1),
+    -12px -12px 24px var(--neomorph-shadow-2);
+}
+
+.neomorph-inset {
+  background: var(--neomorph-light);
+  border-radius: 24px;
+  box-shadow:
+    inset 8px 8px 16px var(--neomorph-shadow-1),
+    inset -8px -8px 16px var(--neomorph-shadow-2);
+}
+
+.neomorph:hover {
+  box-shadow:
+    6px 6px 12px var(--neomorph-shadow-1),
+    -6px -6px 12px var(--neomorph-shadow-2);
+}
+
+/* ==========================================
+   GRADIENT UTILITIES
+   ========================================== */
+.gradient-primary {
+  background: var(--gradient-primary);
+}
+
+.gradient-electric {
+  background: var(--gradient-electric);
+}
+
+.gradient-purple {
+  background: var(--gradient-purple);
+}
+
+.gradient-pink {
+  background: var(--gradient-pink);
+}
+
+.gradient-green {
+  background: var(--gradient-green);
+}
+
+.gradient-sunset {
+  background: var(--gradient-sunset);
+}
+
+.gradient-ocean {
+  background: var(--gradient-ocean);
+}
+
+/* Gradient Text */
+.gradient-text {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-electric {
+  background: var(--gradient-electric);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-purple {
+  background: var(--gradient-purple);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ==========================================
+   ANIMATED GRADIENTS
+   ========================================== */
+@keyframes gradient-shift {
+
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes gradient-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animated-gradient {
+  background: linear-gradient(270deg, #667eea, #764ba2, #f093fb, #0EA5E9);
+  background-size: 800% 800%;
+  animation: gradient-shift 15s ease infinite;
+}
+
+.gradient-border {
+  position: relative;
+  background: white;
+  border-radius: 24px;
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 3px;
+  background: var(--gradient-ocean);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* ==========================================
+   GLOW EFFECTS
+   ========================================== */
+.glow-blue {
+  box-shadow: var(--shadow-glow-blue);
+}
+
+.glow-purple {
+  box-shadow: var(--shadow-glow-purple);
+}
+
+.glow-pink {
+  box-shadow: var(--shadow-glow-pink);
+}
+
+.text-glow {
+  text-shadow: 0 0 20px currentColor;
+}
+
+.text-glow-strong {
+  text-shadow: 0 0 40px currentColor, 0 0 80px currentColor;
+}
+
+/* ==========================================
+   ADVANCED ANIMATIONS
+   ========================================== */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 40px rgba(102, 126, 234, 0.8);
+  }
+}
+
+@keyframes slide-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes ripple {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+@keyframes bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+
+  70% {
+    transform: scale(0.9);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Animation Classes */
+.float-animation {
+  animation: float 6s ease-in-out infinite;
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.slide-in-up {
+  animation: slide-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slide-in-right {
+  animation: slide-in-right 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scale-in {
+  animation: scale-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bounce-in {
+  animation: bounce-in 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* ==========================================
+   PREMIUM CARDS
+   ========================================== */
+.premium-card {
+  background: white;
+  border-radius: 24px;
+  box-shadow: var(--shadow-lg);
+  transition: all var(--transition-base);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.premium-card:hover {
+  transform: translateY(-8px);
+  box-shadow: var(--shadow-xl);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 24px;
+  box-shadow: var(--shadow-lg);
+}
+
+/* ==========================================
+   BUTTONS
+   ========================================== */
+.btn-gradient {
+  background: var(--gradient-primary);
+  color: white;
+  border: none;
+  padding: 14px 32px;
+  border-radius: 16px;
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  box-shadow: var(--shadow-md);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-gradient:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg), var(--shadow-glow-purple);
+}
+
+.btn-gradient:active {
+  transform: translateY(0);
+}
+
+.btn-neomorph {
+  background: var(--neomorph-light);
+  color: var(--dark-900);
+  border: none;
+  padding: 14px 32px;
+  border-radius: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow:
+    8px 8px 16px var(--neomorph-shadow-1),
+    -8px -8px 16px var(--neomorph-shadow-2);
+  transition: all var(--transition-base);
+}
+
+.btn-neomorph:hover {
+  box-shadow:
+    4px 4px 8px var(--neomorph-shadow-1),
+    -4px -4px 8px var(--neomorph-shadow-2);
+}
+
+.btn-neomorph:active {
+  box-shadow:
+    inset 4px 4px 8px var(--neomorph-shadow-1),
+    inset -4px -4px 8px var(--neomorph-shadow-2);
+}
+
+/* ==========================================
+   RIPPLE EFFECT
+   ========================================== */
+.ripple-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  transform: scale(0);
+  animation: ripple 0.6s ease-out;
+  pointer-events: none;
+}
+
+/* ==========================================
+   SKELETON LOADER
+   ========================================== */
+.skeleton {
+  background: linear-gradient(90deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(255, 255, 255, 0.3) 50%,
+      rgba(255, 255, 255, 0.1) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+.skeleton-text {
+  height: 12px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+}
+
+.skeleton-title {
+  height: 24px;
+  width: 60%;
+  margin-bottom: 12px;
+  border-radius: 6px;
+}
+
+.skeleton-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+}
+
+/* ==========================================
+   LOADING SPINNER
+   ========================================== */
+.spinner {
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 0.6s linear infinite;
+}
+
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.spinner-lg {
+  width: 32px;
+  height: 32px;
+  border-width: 4px;
+}
+
+/* ==========================================
+   FOCUS STYLES (Accessibility)
+   ========================================== */
+*:focus-visible {
+  outline: 3px solid rgba(139, 92, 246, 0.5);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(139, 92, 246, 0.6);
+  outline-offset: 3px;
+}
+
+/* ==========================================
+   UTILITY CLASSES
+   ========================================== */
+.text-shadow {
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.text-shadow-lg {
+  text-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.transition-smooth {
+  transition: all var(--transition-base);
+}
+
+.transition-bounce {
+  transition: all var(--transition-bounce);
+}
+
+.backdrop-blur-sm {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.backdrop-blur-md {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.backdrop-blur-lg {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.backdrop-blur-xl {
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+}
+
+/* ==========================================
+   HOVER EFFECTS
+   ========================================== */
+.hover-lift {
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.hover-glow {
+  position: relative;
+  transition: all var(--transition-base);
+}
+
+.hover-glow::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: var(--gradient-primary);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+  z-index: -1;
+  filter: blur(12px);
+}
+
+.hover-glow:hover::before {
+  opacity: 0.6;
 }
