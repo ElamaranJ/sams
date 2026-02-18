@@ -15,6 +15,7 @@ import {
 } from '../firebase/database';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { generateQRPayload } from '../utils/qrGenerator';
 
 const AttendanceGenerate = () => {
   const { user } = useAuth();
@@ -31,7 +32,7 @@ const AttendanceGenerate = () => {
   const [attendees, setAttendees] = useState([]);
   const [loadingAttendees, setLoadingAttendees] = useState(false);
   const [selectedHistorySession, setSelectedHistorySession] = useState(null);
-  
+
   // NEW: Filter state to hide old sessions
   const [showAllHistory, setShowAllHistory] = useState(false);
 
@@ -124,13 +125,17 @@ const AttendanceGenerate = () => {
     });
 
     if (result.success) {
-      const qrData = {
-        sessionId: result.sessionId, 
-        otp: newOTP,
-      };
-      
+      // Use the encryption utility
+      const secretKey = import.meta.env.VITE_QR_SECRET_KEY || 'demo-secret-key';
+      const encryptedData = generateQRPayload({
+        subjectId: selectedCourse.id,
+        facultyId: user.uid,
+        classroomId: 'classroom-default', // or get from course/settings
+        sessionId: result.sessionId
+      }, secretKey);
+
       setOtp(newOTP);
-      setGeneratedQR(qrData);
+      setGeneratedQR(encryptedData.encrypted); // Store the encrypted string
       setTimeRemaining(qrDuration * 60);
       startPollingAttendees(result.sessionId);
       fetchHistory(); // Refresh history
@@ -141,7 +146,7 @@ const AttendanceGenerate = () => {
   };
 
   const copyOTP = () => {
-    navigator.clipboard.writeText(otp).catch(() => {});
+    navigator.clipboard.writeText(otp).catch(() => { });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -169,7 +174,7 @@ const AttendanceGenerate = () => {
   const handleDeleteSession = async (e, sessionId) => {
     e.stopPropagation(); // Prevent opening the accordion
     if (!window.confirm("Are you sure you want to delete this session history?")) return;
-    
+
     try {
       await deleteDoc(doc(db, "attendance_sessions", sessionId));
       // Remove from UI immediately
@@ -183,14 +188,14 @@ const AttendanceGenerate = () => {
   // ── Helper: QR URL ─────────────────────────────────────────────────────────
   const getQRUrl = (data) => {
     if (!data) return '';
-    const jsonString = JSON.stringify(data);
-    return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(jsonString)}`;
+    const content = typeof data === 'string' ? data : JSON.stringify(data);
+    return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(content)}`;
   };
 
   // ── Helper: Filter History ─────────────────────────────────────────────────
   const todayDate = new Date().toISOString().split('T')[0];
-  const displayedHistory = showAllHistory 
-    ? sessionHistory 
+  const displayedHistory = showAllHistory
+    ? sessionHistory
     : sessionHistory.filter(s => (s.date === todayDate) || (s.createdAt?.startsWith(todayDate)));
 
   // ── Attendees table ────────────────────────────────────────────────────────
@@ -234,11 +239,10 @@ const AttendanceGenerate = () => {
                   <td className="px-3 py-2 font-semibold text-slate-900">{a.studentName || '—'}</td>
                   <td className="px-3 py-2 text-slate-600">{a.studentEmail || '—'}</td>
                   <td className="px-3 py-2">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                      a.method === 'qr'
-                        ? 'bg-purple-100 text-purple-700'
-                        : 'bg-blue-100 text-blue-700'
-                    }`}>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${a.method === 'qr'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'bg-blue-100 text-blue-700'
+                      }`}>
                       {a.method === 'qr' ? 'QR Scan' : 'OTP'}
                     </span>
                   </td>
@@ -328,7 +332,7 @@ const AttendanceGenerate = () => {
 
                       {/* Real QR Code */}
                       <div className="bg-white rounded-2xl p-4 mb-4 flex flex-col items-center border-2 border-blue-100 shadow-sm">
-                        <img 
+                        <img
                           src={getQRUrl(generatedQR)}
                           alt="Attendance QR"
                           className="w-full max-w-[220px] h-auto rounded-lg"
@@ -378,14 +382,14 @@ const AttendanceGenerate = () => {
             <div>
               <Card className="p-6">
                 <div className="flex items-center justify-between mb-5">
-                   <h2 className="text-xl font-black text-slate-900">Session History</h2>
-                   <button 
-                     onClick={() => setShowAllHistory(!showAllHistory)}
-                     className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
-                   >
-                     <Filter size={14} />
-                     {showAllHistory ? 'Show Today Only' : 'Show All History'}
-                   </button>
+                  <h2 className="text-xl font-black text-slate-900">Session History</h2>
+                  <button
+                    onClick={() => setShowAllHistory(!showAllHistory)}
+                    className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <Filter size={14} />
+                    {showAllHistory ? 'Show Today Only' : 'Show All History'}
+                  </button>
                 </div>
 
                 {displayedHistory.length === 0 ? (
@@ -417,7 +421,7 @@ const AttendanceGenerate = () => {
                           </button>
 
                           {/* DELETE BUTTON */}
-                          <button 
+                          <button
                             onClick={(e) => handleDeleteSession(e, session.id)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-white text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg shadow-sm border border-slate-100 transition-all opacity-0 group-hover:opacity-100 z-10"
                             title="Delete this history"

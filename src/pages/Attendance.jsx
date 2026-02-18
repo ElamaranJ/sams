@@ -17,7 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import Card from '../components/shared/GlassCard';
 import Button from '../components/ui/Button';
 import { getStudentAttendance, getStudentClasses } from '../firebase/database';
-import { doc, getDoc, setDoc, addDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, setDoc, addDoc, collection, query, getDocs, where } from 'firebase/firestore';
 import { db } from '../firebase';
 
 // MLPV Components
@@ -237,45 +237,86 @@ const MLPVAttendance = () => {
     setError(null);
 
     try {
+      const { qr, device, network } = verificationData;
+      let finalSessionId = qr?.sessionId;
+      let finalSubjectId = qr?.subjectId;
+      let finalFacultyId = qr?.facultyId;
+      let markMethod = qr?.method || 'qr';
+
+      // ── OTP VERIFICATION ──
+      if (qr?.method === 'otp') {
+        // Find active session with this OTP
+        const q = query(
+          collection(db, 'attendance_sessions'),
+          where('otp', '==', qr.enteredOtp),
+          where('isActive', '==', true)
+        );
+        const sessionSnap = await getDocs(q);
+
+        if (sessionSnap.empty) {
+          throw new Error('Wrong OTP or session expired. Ask faculty for current code.');
+        }
+
+        const sessionDoc = sessionSnap.docs[0];
+        const sessionData = sessionDoc.data();
+
+        // Check local expiry
+        if (new Date() > new Date(sessionData.expiresAt)) {
+          throw new Error('This session has expired.');
+        }
+
+        finalSessionId = sessionDoc.id;
+        finalSubjectId = sessionData.classId;
+        finalFacultyId = sessionData.facultyId;
+        markMethod = 'otp';
+      }
+
+      if (!finalSessionId) {
+        throw new Error('Session context missing. Scan QR or enter valid OTP.');
+      }
+
       const attendanceRecord = {
         studentId: user.uid,
-        studentName: user.displayName || user.email,
-        sessionId: verificationData.qr?.sessionId || 'demo-session',
-        subjectId: verificationData.qr?.subjectId || 'demo-subject',
-        facultyId: verificationData.qr?.facultyId || 'demo-faculty',
-        classroomId: verificationData.qr?.classroomId || 'demo-classroom',
+        studentName: user.displayName || user.name || user.email,
+        studentEmail: user.email,
+        sessionId: finalSessionId,
+        classId: finalSubjectId, // database.js uses classId
+        facultyId: finalFacultyId,
+        method: markMethod,
         verificationLayers: {
           network: {
             passed: true,
-            ip: verificationData.network.ip,
-            timestamp: new Date()
+            ip: network.ip,
+            timestamp: new Date().toISOString()
           },
           device: {
             passed: true,
-            deviceHash: verificationData.device.deviceHash,
-            timestamp: new Date()
+            deviceHash: device.deviceHash,
+            timestamp: new Date().toISOString()
           },
           qr: {
             passed: true,
-            scannedAt: new Date()
+            scannedAt: new Date().toISOString()
           },
           liveness: {
             passed: true,
             challenges: livenessData.challenges,
-            timestamp: new Date()
+            timestamp: new Date().toISOString()
           }
         },
-        finalStatus: 'present',
-        markedAt: new Date(),
-        createdAt: new Date()
+        status: 'present',
+        markedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
       };
 
-      await addDoc(collection(db, 'attendanceRecords'), attendanceRecord);
+      // USE 'attendance' collection (matching database.js and faculty view)
+      await addDoc(collection(db, 'attendance'), attendanceRecord);
+
       setAttendanceMarked(true);
       fetchMyAttendance();
     } catch (err) {
       console.error('Failed to mark attendance:', err);
-      setError('Failed to mark attendance. Please try again.');
+      setError(err.message || 'Failed to mark attendance. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
