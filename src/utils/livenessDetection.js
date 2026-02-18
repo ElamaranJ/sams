@@ -61,45 +61,42 @@ export const generateRandomChallenges = (count = 3) => {
 
 /**
  * Simple motion detection using video frames
+ * Optimized to use direct buffer comparison
  * @param {HTMLVideoElement} video - Video element
  * @param {HTMLCanvasElement} canvas - Canvas for frame comparison
- * @returns {number} Motion score (0-100)
+ * @param {Uint8ClampedArray|null} previousData - Previous frame data
+ * @returns {{motionScore: number, currentData: Uint8ClampedArray}} Motion score and current frame data
  */
-export const detectMotion = (video, canvas) => {
-    const ctx = canvas.getContext('2d');
-    const width = video.videoWidth;
-    const height = video.videoHeight;
+export const detectMotion = (video, canvas, previousData) => {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const width = 160; // Use small resolution for motion analysis
+    const height = 120;
 
     canvas.width = width;
     canvas.height = height;
 
-    // Draw current frame
+    // Draw current frame (scaled down)
     ctx.drawImage(video, 0, 0, width, height);
     const currentFrame = ctx.getImageData(0, 0, width, height);
+    const currentData = currentFrame.data;
 
-    // Compare with previous frame (stored in canvas data attribute)
-    const previousFrame = canvas.dataset.previousFrame;
-
-    if (!previousFrame) {
-        // Store first frame
-        canvas.dataset.previousFrame = JSON.stringify(Array.from(currentFrame.data));
-        return 0;
+    if (!previousData || previousData.length !== currentData.length) {
+        return { motionScore: 0, currentData: new Uint8ClampedArray(currentData) };
     }
 
-    const prevData = new Uint8ClampedArray(JSON.parse(previousFrame));
     let diff = 0;
-
-    // Calculate difference between frames (sample every 4th pixel for performance)
-    for (let i = 0; i < currentFrame.data.length; i += 16) {
-        diff += Math.abs(currentFrame.data[i] - prevData[i]);
+    // Calculate difference between frames
+    for (let i = 0; i < currentData.length; i += 4) {
+        // Simple pixel difference (G channel is often enough for motion)
+        diff += Math.abs(currentData[i + 1] - previousData[i + 1]);
     }
-
-    // Store current frame for next comparison
-    canvas.dataset.previousFrame = JSON.stringify(Array.from(currentFrame.data));
 
     // Normalize to 0-100 scale
-    const motionScore = Math.min(100, (diff / (width * height)) * 10);
-    return motionScore;
+    // Area is width * height. Max diff per pixel is 255.
+    const normalizedDiff = (diff / (width * height * 255)) * 100 * 5; // boost sensitivity
+    const motionScore = Math.min(100, normalizedDiff);
+
+    return { motionScore, currentData: new Uint8ClampedArray(currentData) };
 };
 
 /**
@@ -153,32 +150,33 @@ export const detectFaceBrightness = (video, canvas) => {
  * @returns {boolean} True if challenge appears completed
  */
 export const validateChallengeCompletion = (challengeType, motionHistory) => {
-    if (motionHistory.length < 10) return false;
+    if (motionHistory.length < 5) return false;
 
-    const recentMotion = motionHistory.slice(-10);
+    const recentMotion = motionHistory.slice(-15);
     const avgMotion = recentMotion.reduce((a, b) => a + b, 0) / recentMotion.length;
 
     switch (challengeType) {
         case 'blink':
             // Look for quick motion spikes (blinks)
-            const spikes = recentMotion.filter(m => m > 15).length;
-            return spikes >= 2;
+            // With new scoring, > 5 is often enough for a blink
+            const spikes = recentMotion.filter(m => m > 8).length;
+            return spikes >= 1; // Any spike usually indicates a blink if the rest is still
 
         case 'turnLeft':
         case 'turnRight':
             // Look for sustained motion
-            return avgMotion > 20;
+            return avgMotion > 12;
 
         case 'smile':
             // Look for moderate motion
-            return avgMotion > 10;
+            return avgMotion > 6;
 
         case 'nod':
             // Look for motion pattern
-            return avgMotion > 15;
+            return avgMotion > 10;
 
         default:
-            return avgMotion > 10;
+            return avgMotion > 8;
     }
 };
 
@@ -209,6 +207,7 @@ export class LivenessDetector {
         this.currentChallenge = null;
         this.challengeStartTime = null;
         this.isActive = false;
+        this.previousData = null;
     }
 
     /**
@@ -218,17 +217,19 @@ export class LivenessDetector {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
                     facingMode: 'user'
                 }
             });
 
             this.video.srcObject = stream;
+            this.video.play();
             this.isActive = true;
 
             return { success: true };
         } catch (error) {
+            console.error("Camera start error:", error);
             return {
                 success: false,
                 error: 'Camera access denied or not available'
@@ -245,6 +246,7 @@ export class LivenessDetector {
             this.video.srcObject = null;
         }
         this.isActive = false;
+        this.previousData = null;
     }
 
     /**
@@ -255,6 +257,7 @@ export class LivenessDetector {
         this.currentChallenge = challenge;
         this.challengeStartTime = Date.now();
         this.motionHistory = [];
+        this.previousData = null; // Reset buffer for new challenge
     }
 
     /**
@@ -263,12 +266,15 @@ export class LivenessDetector {
      */
     updateMotion() {
         if (!this.isActive || !this.currentChallenge) return null;
+        if (this.video.readyState < 2) return null; // HAVE_CURRENT_DATA
 
-        const motionScore = detectMotion(this.video, this.canvas);
+        const { motionScore, currentData } = detectMotion(this.video, this.canvas, this.previousData);
+        this.previousData = currentData;
+
         this.motionHistory.push(motionScore);
 
-        // Keep only last 30 frames
-        if (this.motionHistory.length > 30) {
+        // Keep only last 60 frames (approx 2 seconds)
+        if (this.motionHistory.length > 60) {
             this.motionHistory.shift();
         }
 

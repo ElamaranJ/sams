@@ -222,9 +222,66 @@ const MLPVAttendance = () => {
   };
 
 
-  const handleQRSuccess = (data) => {
-    setVerificationData(prev => ({ ...prev, qr: data }));
-    setTimeout(() => setCurrentLayer(4), 1000);
+  // Verify session immediately (Layer 3)
+  const verifySession = async (qrData) => {
+    // 1. Check if OTP
+    if (qrData.method === 'otp') {
+      const q = query(
+        collection(db, 'attendance_sessions'),
+        where('otp', '==', qrData.enteredOtp),
+        where('isActive', '==', true)
+      );
+      const sessionSnap = await getDocs(q);
+
+      if (sessionSnap.empty) {
+        throw new Error('Wrong OTP or session expired.');
+      }
+
+      const sessionData = sessionSnap.docs[0].data();
+      if (new Date() > new Date(sessionData.expiresAt)) {
+        throw new Error('This session has expired.');
+      }
+
+      return {
+        sessionId: sessionSnap.docs[0].id,
+        subjectId: sessionData.classId,
+        facultyId: sessionData.facultyId,
+        method: 'otp'
+      };
+    }
+
+    // 2. Check if QR (encrypted payload)
+    if (qrData.sessionId) {
+      const docRef = doc(db, 'attendance_sessions', qrData.sessionId);
+      const sessionDoc = await getDoc(docRef);
+
+      if (!sessionDoc.exists() || !sessionDoc.data().isActive) {
+        throw new Error('Session not found or inactive.');
+      }
+
+      return {
+        sessionId: qrData.sessionId,
+        subjectId: qrData.subjectId,
+        facultyId: qrData.facultyId,
+        method: 'qr'
+      };
+    }
+
+    throw new Error('Invalid verification data');
+  };
+
+  const handleQRSuccess = async (data) => {
+    try {
+      const verifiedSession = await verifySession(data);
+      setVerificationData(prev => ({
+        ...prev,
+        qr: { ...data, ...verifiedSession }
+      }));
+      setTimeout(() => setCurrentLayer(4), 500);
+      return true;
+    } catch (err) {
+      throw err;
+    }
   };
 
   const handleLivenessSuccess = async (data) => {
@@ -238,51 +295,19 @@ const MLPVAttendance = () => {
 
     try {
       const { qr, device, network } = verificationData;
-      let finalSessionId = qr?.sessionId;
-      let finalSubjectId = qr?.subjectId;
-      let finalFacultyId = qr?.facultyId;
-      let markMethod = qr?.method || 'qr';
 
-      // ── OTP VERIFICATION ──
-      if (qr?.method === 'otp') {
-        // Find active session with this OTP
-        const q = query(
-          collection(db, 'attendance_sessions'),
-          where('otp', '==', qr.enteredOtp),
-          where('isActive', '==', true)
-        );
-        const sessionSnap = await getDocs(q);
-
-        if (sessionSnap.empty) {
-          throw new Error('Wrong OTP or session expired. Ask faculty for current code.');
-        }
-
-        const sessionDoc = sessionSnap.docs[0];
-        const sessionData = sessionDoc.data();
-
-        // Check local expiry
-        if (new Date() > new Date(sessionData.expiresAt)) {
-          throw new Error('This session has expired.');
-        }
-
-        finalSessionId = sessionDoc.id;
-        finalSubjectId = sessionData.classId;
-        finalFacultyId = sessionData.facultyId;
-        markMethod = 'otp';
-      }
-
-      if (!finalSessionId) {
-        throw new Error('Session context missing. Scan QR or enter valid OTP.');
+      if (!qr || !qr.sessionId) {
+        throw new Error('Session validation missing. Please retry verification.');
       }
 
       const attendanceRecord = {
         studentId: user.uid,
         studentName: user.displayName || user.name || user.email,
         studentEmail: user.email,
-        sessionId: finalSessionId,
-        classId: finalSubjectId, // database.js uses classId
-        facultyId: finalFacultyId,
-        method: markMethod,
+        sessionId: qr.sessionId,
+        classId: qr.subjectId,
+        facultyId: qr.facultyId,
+        method: qr.method || 'qr',
         verificationLayers: {
           network: {
             passed: true,
@@ -505,7 +530,7 @@ const MLPVAttendance = () => {
                   <X size={32} />
                 </button>
 
-                <div className="bg-gradient-to-br from-slate-50 via-purple-50 to-pink-50 rounded-3xl p-8">
+                <div className="bg-gradient-to-br from-slate-50 via-purple-50 to-pink-50 rounded-3xl p-8 max-h-[85vh] overflow-y-auto custom-scrollbar">
                   {/* Progress Steps */}
                   <div className="mb-8">
                     <div className="flex items-center justify-between">

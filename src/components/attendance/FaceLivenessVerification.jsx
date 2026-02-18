@@ -48,6 +48,9 @@ const FaceLivenessVerification = ({ onSuccess, onFailure }) => {
         setStatus('starting');
         setError(null);
 
+        // Allow React to render the video element first
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         // Check webcam availability
         const webcamAvailable = await isWebcamAvailable();
         if (!webcamAvailable) {
@@ -55,6 +58,16 @@ const FaceLivenessVerification = ({ onSuccess, onFailure }) => {
             setError('No webcam detected');
             onFailure?.('No webcam');
             return;
+        }
+
+        if (!videoRef.current) {
+            // Retry once if ref is missing
+            await new Promise(resolve => setTimeout(resolve, 300));
+            if (!videoRef.current) {
+                setStatus('failed');
+                setError('Video initialization failed');
+                return;
+            }
         }
 
         // Generate random challenges
@@ -279,8 +292,8 @@ const FaceLivenessVerification = ({ onSuccess, onFailure }) => {
                                                         <div
                                                             key={i}
                                                             className={`w-2 h-8 rounded-full ${i < Math.floor(motionScore / 20)
-                                                                    ? 'bg-green-400'
-                                                                    : 'bg-white/20'
+                                                                ? 'bg-green-400'
+                                                                : 'bg-white/20'
                                                                 }`}
                                                         />
                                                     ))}
@@ -312,10 +325,10 @@ const FaceLivenessVerification = ({ onSuccess, onFailure }) => {
                                     <div
                                         key={i}
                                         className={`w-12 h-2 rounded-full ${i < currentChallengeIndex
-                                                ? 'bg-green-500'
-                                                : i === currentChallengeIndex
-                                                    ? 'bg-blue-500'
-                                                    : 'bg-slate-200'
+                                            ? 'bg-green-500'
+                                            : i === currentChallengeIndex
+                                                ? 'bg-blue-500'
+                                                : 'bg-slate-200'
                                             }`}
                                     />
                                 ))}
