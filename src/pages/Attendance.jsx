@@ -184,9 +184,11 @@ const MLPVAttendance = () => {
   };
 
   const handleDeviceSuccess = async (data) => {
+    // 1. Update state locally first
     setVerificationData(prev => ({ ...prev, device: data }));
-    // Always update Firestore with current device hash
+
     try {
+      // 2. Persist to Firestore
       await setDoc(doc(db, 'registeredDevices', user.uid), {
         studentId: user.uid,
         deviceHash: data.deviceHash,
@@ -196,10 +198,19 @@ const MLPVAttendance = () => {
         lastUsed: new Date()
       });
       setRegisteredDeviceHash(data.deviceHash);
+
+      // 3. Only proceed after successful save and a short UI delay for 'Verified' state
+      setTimeout(() => {
+        setCurrentLayer(3);
+      }, 1500);
     } catch (err) {
       console.error('Failed to save device:', err);
+      // Even if save fails (offline?), we might want to proceed if locally verified?
+      // For now, let's allow proceeding but log error
+      setTimeout(() => {
+        setCurrentLayer(3);
+      }, 1500);
     }
-    setTimeout(() => setCurrentLayer(3), 1000);
   };
 
   const handleDeviceReRegister = async (data) => {

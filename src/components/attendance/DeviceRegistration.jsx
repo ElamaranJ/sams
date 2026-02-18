@@ -38,25 +38,33 @@ const DeviceRegistration = ({
         try {
             const fp = await generateDeviceFingerprint();
             setDeviceId(fp.deviceHash);
-            setDeviceInfo(fp.deviceInfo);
+            setDeviceInfo(fp.deviceInfo); // This update might not reflect immediately in the render if we proceed too fast
 
-            // Always register/update — the localStorage UUID IS the device identity
-            setStatus('registering');
+            // Add delay to show checking state
+            await new Promise(r => setTimeout(r, 800));
+
+            // Proceed to register
             await doRegister(fp.deviceHash, fp.deviceInfo);
         } catch (err) {
+            console.error("Device check error:", err);
             setStatus('failed');
-            setError(err.message || 'Device check failed.');
+            setError(err.message || 'Device compatibility check failed.');
             onFailure?.(err.message);
         }
     };
 
     const doRegister = async (hash, info) => {
         try {
-            await onRegister?.({ deviceHash: hash, deviceInfo: info });
+            setStatus('registering');
+            // Wait for parent to process
+            if (onRegister) {
+                await onRegister({ deviceHash: hash, deviceInfo: info });
+            }
             setStatus('verified');
         } catch (err) {
+            console.error("Registration error:", err);
             setStatus('failed');
-            setError('Failed to register device: ' + (err.message || 'Unknown error'));
+            setError('Failed to bind device. ' + (err.message || ''));
             onFailure?.(err.message);
         }
     };
