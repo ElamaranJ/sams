@@ -125,20 +125,22 @@ const AttendanceGenerate = () => {
     });
 
     if (result.success) {
-      // Use the encryption utility
+      // Use the encryption utility — expiry matches the session duration
       const secretKey = import.meta.env.VITE_QR_SECRET_KEY || 'demo-secret-key';
+      const sessionExpiresAt = Date.now() + qrDuration * 60 * 1000;
       const encryptedData = generateQRPayload({
         subjectId: selectedCourse.id,
         facultyId: user.uid,
-        classroomId: 'classroom-default', // or get from course/settings
-        sessionId: result.sessionId
+        classroomId: 'classroom-default',
+        sessionId: result.sessionId,
+        expiresAt: sessionExpiresAt  // pass our own expiry so QR lasts full session duration
       }, secretKey);
 
       setOtp(newOTP);
-      setGeneratedQR(encryptedData.encrypted); // Store the encrypted string
+      setGeneratedQR(encryptedData.encrypted);
       setTimeRemaining(qrDuration * 60);
       startPollingAttendees(result.sessionId);
-      fetchHistory(); // Refresh history
+      fetchHistory();
     } else {
       alert('Error creating session: ' + result.error);
     }

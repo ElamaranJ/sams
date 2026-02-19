@@ -79,7 +79,8 @@ const generateSalt = (length = 16) => {
  */
 export const generateQRPayload = (classData, secretKey) => {
     const timestamp = Date.now();
-    const expiresAt = timestamp + 10000; // 10 seconds from now
+    // Use caller-provided expiresAt if given (e.g., full session duration), else fall back to 10s
+    const expiresAt = classData.expiresAt || (timestamp + 10000);
     const salt = generateSalt();
 
     const payload = {

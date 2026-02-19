@@ -20,31 +20,31 @@ export const LIVENESS_CHALLENGES = [
     {
         type: 'blink',
         instruction: '👁️ Blink your eyes twice',
-        duration: 3000,
+        duration: 5000,
         icon: '👁️'
     },
     {
         type: 'turnLeft',
         instruction: '⬅️ Turn your head to the left',
-        duration: 3000,
+        duration: 5000,
         icon: '⬅️'
     },
     {
         type: 'turnRight',
         instruction: '➡️ Turn your head to the right',
-        duration: 3000,
+        duration: 5000,
         icon: '➡️'
     },
     {
         type: 'smile',
         instruction: '😊 Smile at the camera',
-        duration: 3000,
+        duration: 5000,
         icon: '😊'
     },
     {
         type: 'nod',
         instruction: '⬇️ Nod your head (look down then up)',
-        duration: 3000,
+        duration: 5000,
         icon: '⬇️'
     }
 ];

@@ -28,8 +28,17 @@ const FaceLivenessVerification = ({ onSuccess, onFailure }) => {
     const videoRef = useRef(null);
     const detectorRef = useRef(null);
     const animationFrameRef = useRef(null);
+    // ✅ FIX: Use a ref instead of state in updateMotion loop to avoid stale closures
+    const isVerifyingRef = useRef(false);
+    // Use a ref to always access the latest challenges inside the animation loop
+    const challengesRef = useRef([]);
+    // Track current challenge index in a ref to avoid stale closures
+    const currentIndexRef = useRef(0);
 
     const currentChallenge = challenges[currentChallengeIndex];
+
+    // Keep currentIndexRef in sync with state
+    useEffect(() => { currentIndexRef.current = currentChallengeIndex; }, [currentChallengeIndex]);
 
     // Get challenge icon
     const getChallengeIcon = (type) => {
@@ -73,6 +82,8 @@ const FaceLivenessVerification = ({ onSuccess, onFailure }) => {
         // Generate random challenges
         const randomChallenges = generateRandomChallenges(3);
         setChallenges(randomChallenges);
+        challengesRef.current = randomChallenges;
+        currentIndexRef.current = 0;
         setCurrentChallengeIndex(0);
 
         // Initialize detector
@@ -88,25 +99,27 @@ const FaceLivenessVerification = ({ onSuccess, onFailure }) => {
 
         // Wait for video to be ready
         setTimeout(() => {
+            isVerifyingRef.current = true;
             setStatus('verifying');
-            startChallenge(0);
+            startChallenge(0, randomChallenges);
         }, 1000);
     };
 
-    // Start a specific challenge
-    const startChallenge = (index) => {
-        if (!challenges[index]) return;
+    // Start a specific challenge — pass challenges array explicitly to avoid stale state
+    const startChallenge = (index, challengeArr) => {
+        const arr = challengeArr || challengesRef.current;
+        if (!arr[index]) return;
 
         setChallengeStatus('active');
-        detectorRef.current.startChallenge(challenges[index]);
+        detectorRef.current.startChallenge(arr[index]);
 
         // Start animation loop
         updateMotion();
     };
 
-    // Update motion detection
+    // Update motion detection — uses ref instead of state to avoid stale closures
     const updateMotion = () => {
-        if (!detectorRef.current || status !== 'verifying') return;
+        if (!detectorRef.current || !isVerifyingRef.current) return;
 
         const motion = detectorRef.current.updateMotion();
 
@@ -153,10 +166,12 @@ const FaceLivenessVerification = ({ onSuccess, onFailure }) => {
         setChallengeStatus('passed');
 
         setTimeout(() => {
-            const nextIndex = currentChallengeIndex + 1;
+            const nextIndex = currentIndexRef.current + 1;
+            const totalChallenges = challengesRef.current.length;
 
-            if (nextIndex < challenges.length) {
+            if (nextIndex < totalChallenges) {
                 // Move to next challenge
+                currentIndexRef.current = nextIndex;
                 setCurrentChallengeIndex(nextIndex);
                 setChallengeStatus('waiting');
                 setTimeout(() => startChallenge(nextIndex), 500);
@@ -188,6 +203,7 @@ const FaceLivenessVerification = ({ onSuccess, onFailure }) => {
 
     // Stop verification
     const stopVerification = () => {
+        isVerifyingRef.current = false;
         if (detectorRef.current) {
             detectorRef.current.stop();
         }
