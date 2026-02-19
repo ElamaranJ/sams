@@ -105,6 +105,7 @@ const MLPVAttendance = () => {
   const [attendanceMarked, setAttendanceMarked] = useState(false);
   const [error, setError] = useState(null);
   const [registeredDeviceHash, setRegisteredDeviceHash] = useState(null);
+  const [isDeviceLoaded, setIsDeviceLoaded] = useState(false);
 
   // College Wi-Fi: 10.0.x.x (subnet mask 255.255.0.0 = entire 10.0.xxx.xxx range)
   const allowedSubnets = ['10.0.xxx.xxx'];
@@ -131,6 +132,7 @@ const MLPVAttendance = () => {
       console.error("Failed to load records:", err);
     } finally {
       setLoading(false);
+      setIsDeviceLoaded(true);
     }
   };
 
@@ -187,30 +189,29 @@ const MLPVAttendance = () => {
     // 1. Update state locally first
     setVerificationData(prev => ({ ...prev, device: data }));
 
-    try {
-      // 2. Persist to Firestore
-      await setDoc(doc(db, 'registeredDevices', user.uid), {
-        studentId: user.uid,
-        deviceHash: data.deviceHash,
-        deviceInfo: data.deviceInfo,
-        isActive: true,
-        registeredAt: new Date(),
-        lastUsed: new Date()
-      });
-      setRegisteredDeviceHash(data.deviceHash);
+    // 2. Schedule the layer transition immediately (UI feedback first)
+    // We don't want to block the user UI on a background DB write
+    setTimeout(() => {
+      setCurrentLayer(3);
+    }, 1500);
 
-      // 3. Only proceed after successful save and a short UI delay for 'Verified' state
-      setTimeout(() => {
-        setCurrentLayer(3);
-      }, 1500);
-    } catch (err) {
-      console.error('Failed to save device:', err);
-      // Even if save fails (offline?), we might want to proceed if locally verified?
-      // For now, let's allow proceeding but log error
-      setTimeout(() => {
-        setCurrentLayer(3);
-      }, 1500);
-    }
+    // 3. Persist to Firestore in background (Fire-and-forget for UI purposes)
+    setDoc(doc(db, 'registeredDevices', user.uid), {
+      studentId: user.uid,
+      deviceHash: data.deviceHash,
+      deviceInfo: data.deviceInfo,
+      isActive: true,
+      registeredAt: new Date(),
+      lastUsed: new Date()
+    })
+      .then(() => {
+        console.log("Device registered successfully");
+        setRegisteredDeviceHash(data.deviceHash);
+      })
+      .catch((err) => {
+        console.error('Failed to save device in background:', err);
+        // We don't stop the flow for this as it's a background security log
+      });
   };
 
   const handleDeviceReRegister = async (data) => {
@@ -595,13 +596,21 @@ const MLPVAttendance = () => {
                         )}
 
                         {currentLayer === 2 && (
-                          <DeviceRegistration
-                            studentId={user.uid}
-                            registeredDeviceHash={registeredDeviceHash}
-                            onRegister={handleDeviceSuccess}
-                            onVerify={handleDeviceSuccess}
-                            onFailure={(err) => handleLayerFailure('Device', err)}
-                          />
+                          isDeviceLoaded ? (
+                            <DeviceRegistration
+                              studentId={user.uid}
+                              registeredDeviceHash={registeredDeviceHash}
+                              onRegister={handleDeviceSuccess}
+                              onVerify={handleDeviceSuccess}
+                              onFailure={(err) => handleLayerFailure('Device', err)}
+                            />
+                          ) : (
+                            <div className="neomorph rounded-3xl p-12 text-center">
+                              <Loader className="animate-spin text-purple-500 mx-auto mb-4" size={48} />
+                              <div className="text-xl font-bold text-slate-900">Loading Device Security...</div>
+                              <p className="text-slate-500">Checking registration status</p>
+                            </div>
+                          )
                         )}
 
                         {currentLayer === 3 && (

@@ -1,10 +1,12 @@
 /**
- * DEVICE REGISTRATION COMPONENT
- * Layer 2: Device Binding
+ * DEVICE REGISTRATION COMPONENT — FIXED VERSION
  *
- * Uses a persistent UUID stored in localStorage as the device ID.
- * - First time: auto-generates UUID, saves to Firestore, proceeds
- * - Next times: reads UUID from localStorage, compares with Firestore
+ * Fixes applied:
+ * 1. Now actually compares current device UUID against registeredDeviceHash
+ *    — if device doesn't match, verification fails with a clear error
+ * 2. onRegister is only called on first-time registration (no saved hash)
+ * 3. onVerify is called when device matches the saved hash
+ * 4. onFailure is properly called when device doesn't match
  */
 
 import React, { useState, useEffect } from 'react';
@@ -15,60 +17,144 @@ import Button from '../ui/Button';
 
 const DeviceRegistration = ({
     studentId,
-    registeredDeviceHash,
-    onRegister,
-    onVerify,
-    onFailure
+    registeredDeviceHash,   // hash saved in Firestore (null if first time)
+    onRegister,             // called on first registration
+    onVerify,               // called when device matches
+    onFailure               // called when device doesn't match
 }) => {
     const [status, setStatus] = useState('checking');
     const [deviceInfo, setDeviceInfo] = useState(null);
     const [deviceId, setDeviceId] = useState(null);
     const [error, setError] = useState(null);
+    const [deviceMismatch, setDeviceMismatch] = useState(false);
+    const currentFpRef = React.useRef(null); // store fp for re-register
 
     const isFirstLogin = !registeredDeviceHash;
 
+    const isMounted = React.useRef(true);
     useEffect(() => {
+        isMounted.current = true; // reset for React StrictMode double-invoke
         runCheck();
+        return () => { isMounted.current = false; };
     }, []);
 
     const runCheck = async () => {
+        console.log("[DeviceReg] runCheck started");
         setStatus('checking');
         setError(null);
 
         try {
+            console.log("[DeviceReg] Generating fingerprint...");
             const fp = await generateDeviceFingerprint();
+            console.log("[DeviceReg] Fingerprint generated:", fp.deviceHash);
+
+            if (!isMounted.current) return;
+            currentFpRef.current = fp; // save for potential re-register
             setDeviceId(fp.deviceHash);
-            setDeviceInfo(fp.deviceInfo); // This update might not reflect immediately in the render if we proceed too fast
+            setDeviceInfo(fp.deviceInfo);
+            setDeviceMismatch(false);
 
-            // Add delay to show checking state
+            // Small delay to show the checking state
+            console.log("[DeviceReg] Waiting 800ms...");
             await new Promise(r => setTimeout(r, 800));
+            if (!isMounted.current) return;
 
-            // Proceed to register
-            await doRegister(fp.deviceHash, fp.deviceInfo);
+            console.log("[DeviceReg] isFirstLogin:", isFirstLogin);
+            if (isFirstLogin) {
+                console.log("[DeviceReg] Calling doRegister");
+                await doRegister(fp.deviceHash, fp.deviceInfo);
+            } else {
+                console.log("[DeviceReg] Calling doVerify");
+                await doVerify(fp.deviceHash);
+            }
         } catch (err) {
-            console.error("Device check error:", err);
-            setStatus('failed');
-            setError(err.message || 'Device compatibility check failed.');
-            onFailure?.(err.message);
+            console.error('[DeviceReg] Device check error:', err);
+            if (isMounted.current) {
+                setStatus('failed');
+                setError(err.message || 'Device compatibility check failed.');
+                onFailure?.(err.message);
+            }
         }
     };
 
+    // First-time registration
     const doRegister = async (hash, info) => {
         try {
-            setStatus('registering');
+            console.log("[DeviceReg] doRegister started");
+            if (isMounted.current) setStatus('registering');
+
             // Wait for parent to process
             if (onRegister) {
-                await onRegister({ deviceHash: hash, deviceInfo: info });
+                console.log("[DeviceReg] Calling parent onRegister...");
+                // Pass isVerified: false so the parent knows this is a NEW registration
+                await onRegister({ deviceHash: hash, deviceInfo: info, isVerified: false });
+                console.log("[DeviceReg] Parent onRegister finished");
             }
-            setStatus('verified');
+
+            // Only update if still mounted
+            if (isMounted.current) {
+                console.log("[DeviceReg] Setting status to verified");
+                setStatus('verified');
+            }
         } catch (err) {
-            console.error("Registration error:", err);
-            setStatus('failed');
-            setError('Failed to bind device. ' + (err.message || ''));
-            onFailure?.(err.message);
+            console.error("[DeviceReg] Registration error:", err);
+            if (isMounted.current) {
+                setStatus('failed');
+                setError('Failed to bind device. ' + (err.message || ''));
+                onFailure?.(err.message);
+            }
         }
     };
 
+    const doVerify = async (currentHash) => {
+        try {
+            console.log("[DeviceReg] doVerify started");
+            if (isMounted.current) setStatus('checking');
+
+            // Compare with stored hash
+            console.log("[DeviceReg] Comparing fingerprints...");
+            const matches = compareDeviceFingerprints(currentHash, registeredDeviceHash);
+            console.log("[DeviceReg] Matches:", matches);
+
+            if (!matches) {
+                // Device mismatch — show re-register option instead of hard-fail
+                if (isMounted.current) {
+                    setDeviceMismatch(true);
+                    setStatus('failed');
+                    setError('This browser is not the one you originally registered with.');
+                    onFailure?.('Device mismatch');
+                }
+                return;
+            }
+
+            // Device matched
+            if (onVerify) {
+                console.log("[DeviceReg] Calling parent onVerify...");
+                await onVerify({ deviceHash: currentHash, deviceInfo: null, isVerified: true });
+                console.log("[DeviceReg] Parent onVerify finished");
+            }
+
+            if (isMounted.current) {
+                console.log("[DeviceReg] Setting status to verified");
+                setStatus('verified');
+            }
+        } catch (err) {
+            console.error('[DeviceReg] Verification error:', err);
+            if (isMounted.current) {
+                setStatus('failed');
+                setError(err.message);
+                onFailure?.(err.message);
+            }
+        }
+    };
+
+    // Re-register: overwrite old device binding with current device
+    const handleReregister = async () => {
+        const fp = currentFpRef.current;
+        if (!fp) return;
+        setDeviceMismatch(false);
+        await doRegister(fp.deviceHash, fp.deviceInfo);
+    };
 
     return (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md mx-auto">
@@ -117,7 +203,6 @@ const DeviceRegistration = ({
                         </div>
                     )}
 
-                    {/* Status */}
                     {status === 'checking' && (
                         <div className="flex items-center justify-center gap-2 text-blue-600 py-4">
                             <Loader className="animate-spin" size={18} />
@@ -128,7 +213,9 @@ const DeviceRegistration = ({
                     {status === 'registering' && (
                         <div className="flex items-center justify-center gap-2 text-amber-600 py-4">
                             <Loader className="animate-spin" size={18} />
-                            <span className="font-semibold text-sm">Registering this device...</span>
+                            <span className="font-semibold text-sm">
+                                {isFirstLogin ? 'Registering this device...' : 'Verifying device...'}
+                            </span>
                         </div>
                     )}
 
@@ -154,20 +241,40 @@ const DeviceRegistration = ({
                                 <div className="text-sm text-red-600 mt-1">{error}</div>
                             </motion.div>
 
-                            <Button variant="gradient" fullWidth onClick={runCheck}>
-                                Retry
-                            </Button>
-
-                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                                <div className="flex items-start gap-2">
-                                    <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16} />
-                                    <div className="text-xs text-amber-700 space-y-1">
-                                        <p className="font-bold">Wrong device detected</p>
-                                        <p>You must use the same browser on the same laptop you registered with.</p>
-                                        <p>Contact admin if you changed your device.</p>
+                            {deviceMismatch ? (
+                                <>
+                                    <Button variant="gradient" fullWidth onClick={handleReregister}>
+                                        🔁 Re-register This Device
+                                    </Button>
+                                    <Button variant="outline" fullWidth onClick={runCheck}>
+                                        Retry
+                                    </Button>
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                        <div className="flex items-start gap-2">
+                                            <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16} />
+                                            <div className="text-xs text-amber-700 space-y-1">
+                                                <p className="font-bold">Different browser/device detected</p>
+                                                <p>Your saved device ID doesn't match. Click <strong>Re-register</strong> to bind this browser as your new device.</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
+                                </>
+                            ) : (
+                                <>
+                                    <Button variant="gradient" fullWidth onClick={runCheck}>
+                                        Retry
+                                    </Button>
+                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                        <div className="flex items-start gap-2">
+                                            <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16} />
+                                            <div className="text-xs text-amber-700 space-y-1">
+                                                <p className="font-bold">Device check error</p>
+                                                <p>Something went wrong. Try retrying.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </>
                     )}
                 </div>

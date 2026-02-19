@@ -16,7 +16,7 @@ import Button from '../ui/Button';
 
 const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-session' }) => {
     const [tab, setTab] = useState('qr');   // 'qr' | 'otp'
-    const [status, setStatus] = useState('idle');  // idle | scanning | validating | success | failed
+    const [status, setStatus] = useState('idle');  // idle | initializing | scanning | validating | success | failed
     const [error, setError] = useState(null);
     const [cameraActive, setCameraActive] = useState(false);
 
@@ -27,27 +27,49 @@ const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-sessi
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const requestRef = useRef(null);
+    const streamRef = useRef(null);
+
+    // ── Cleanup on unmount ───────────────────────────────────────────────────
+    useEffect(() => {
+        return () => {
+            stopCamera();
+        };
+    }, []);
 
     // ── Camera ──────────────────────────────────────────────────────────────
-    // ── Camera ──────────────────────────────────────────────────────────────
+    const stopCamera = () => {
+        if (requestRef.current) {
+            cancelAnimationFrame(requestRef.current);
+            requestRef.current = null;
+        }
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+        setCameraActive(false);
+    };
+
     const startCamera = async () => {
         try {
-            setStatus('initializing'); // Show loader/video placeholder
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            setStatus('initializing');
+            setError(null);
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment' }
+            });
+            streamRef.current = stream;
 
-            // Wait a tick for render if needed, but since we set status, we need the video to be there.
-            // We'll update render logic to show video when initializing.
-
-            // Use a small timeout to ensure ref is populated if we just switched status
             setTimeout(() => {
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
-                    videoRef.current.setAttribute("playsinline", true);
+                    videoRef.current.setAttribute('playsinline', true);
 
                     const playPromise = videoRef.current.play();
                     if (playPromise !== undefined) {
-                        playPromise.catch(error => {
-                            console.error("Auto-play prevented:", error);
+                        playPromise.catch(err => {
+                            console.error('Auto-play prevented:', err);
                         });
                     }
 
@@ -57,21 +79,45 @@ const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-sessi
                         requestRef.current = requestAnimationFrame(scanTick);
                     };
                 } else {
-                    // Retry once if ref was missing
-                    console.warn("Video ref missing, retrying...");
+                    console.warn('Video ref missing after timeout');
+                    setError('Camera failed to initialize. Try again.');
+                    setStatus('failed');
                 }
             }, 100);
 
         } catch (err) {
-            console.error("Camera error:", err);
+            console.error('Camera error:', err);
             setError('Camera access denied. Use OTP option instead.');
             setStatus('failed');
         }
     };
 
-    // ... stopCamera ...
+    // ── QR Frame Scan Loop ───────────────────────────────────────────────────
+    const scanTick = () => {
+        if (!videoRef.current || !canvasRef.current) return;
 
-    // ... scanTick ...
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            canvas.height = video.videoHeight;
+            canvas.width = video.videoWidth;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: 'dontInvert',
+            });
+
+            if (code) {
+                handleQRDetected(code.data);
+                return; // stop looping — handleQRDetected calls stopCamera
+            }
+        }
+
+        requestRef.current = requestAnimationFrame(scanTick);
+    };
 
     // ── QR Validation ────────────────────────────────────────────────────────
     const handleQRDetected = async (qrData) => {
@@ -79,15 +125,13 @@ const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-sessi
         setStatus('validating');
 
         try {
-            // Decrypt and validate locally first
             const result = validateQRPayload(qrData, secretKey);
 
             if (result.valid) {
-                // Await parent validation (Firestore check)
                 if (onSuccess) {
                     await onSuccess({
                         method: 'qr',
-                        sessionId: result.payload.sessionId, // This might be null if using older format?
+                        sessionId: result.payload.sessionId,
                         ...result.payload
                     });
                     setStatus('success');
@@ -102,8 +146,52 @@ const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-sessi
         }
     };
 
-    // ... 
+    // ── Manual QR paste input ────────────────────────────────────────────────
+    const handleManualQR = (e) => {
+        e.preventDefault();
+        const val = e.target.qrInput?.value?.trim();
+        if (val) {
+            handleQRDetected(val);
+        }
+    };
 
+    // ── OTP handlers ─────────────────────────────────────────────────────────
+    const handleOtpChange = (index, value) => {
+        // Only allow digits
+        const digit = value.replace(/\D/g, '').slice(-1);
+        const newOtp = [...otp];
+        newOtp[index] = digit;
+        setOtp(newOtp);
+
+        // Auto-advance to next field
+        if (digit && index < 5) {
+            otpRefs.current[index + 1]?.focus();
+        }
+    };
+
+    const handleOtpKeyDown = (index, e) => {
+        if (e.key === 'Backspace' && !otp[index] && index > 0) {
+            otpRefs.current[index - 1]?.focus();
+        }
+        if (e.key === 'ArrowLeft' && index > 0) {
+            otpRefs.current[index - 1]?.focus();
+        }
+        if (e.key === 'ArrowRight' && index < 5) {
+            otpRefs.current[index + 1]?.focus();
+        }
+    };
+
+    const handleOtpPaste = (e) => {
+        e.preventDefault();
+        const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+        if (pasted.length === 6) {
+            const newOtp = pasted.split('');
+            setOtp(newOtp);
+            otpRefs.current[5]?.focus();
+        }
+    };
+
+    // ── OTP Submit ───────────────────────────────────────────────────────────
     const submitOTP = async () => {
         const entered = otp.join('');
         if (entered.length !== 6) { setError('Enter all 6 digits'); return; }
@@ -112,14 +200,19 @@ const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-sessi
         setError(null);
 
         try {
+            // Validate OTP locally first
+            const otpResult = validateSessionOTP(entered, sessionId, secretKey);
+            if (!otpResult.valid) {
+                throw new Error(otpResult.error || 'Invalid OTP');
+            }
+
             if (onSuccess) {
-                // Await parent validation (Firestore check)
-                await onSuccess({ method: 'otp', enteredOtp: entered });
+                await onSuccess({ method: 'otp', enteredOtp: entered, sessionId });
                 setStatus('success');
             }
         } catch (err) {
             setStatus('failed');
-            setError(err.message || 'OTP verification failed'); // Show actual error from parent
+            setError(err.message || 'OTP verification failed');
             onFailure?.(err.message);
         }
     };
@@ -140,6 +233,7 @@ const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-sessi
                 <div className="text-center mb-6">
                     <div className="inline-block mb-4">
                         {status === 'idle' && <QrCode size={48} className="text-purple-500" />}
+                        {status === 'initializing' && <Loader size={48} className="text-blue-500 animate-spin" />}
                         {status === 'scanning' && <Camera size={48} className="text-blue-500" />}
                         {status === 'validating' && <Loader size={48} className="text-amber-500 animate-spin" />}
                         {status === 'success' && <CheckCircle size={48} className="text-green-500" />}
@@ -175,7 +269,7 @@ const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-sessi
 
                 <AnimatePresence mode="wait">
 
-                    {/* ── QR Tab ── */}
+                    {/* ── QR Tab: Idle ── */}
                     {tab === 'qr' && status === 'idle' && (
                         <motion.div key="qr-idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                             <div className="bg-slate-50 rounded-xl p-8 text-center mb-4">
@@ -202,13 +296,14 @@ const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-sessi
                         </motion.div>
                     )}
 
+                    {/* ── QR Tab: Scanning / Initializing ── */}
                     {tab === 'qr' && (status === 'scanning' || status === 'initializing') && (
                         <motion.div key="qr-scanning" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                             <div className="relative bg-slate-900 rounded-xl overflow-hidden mb-4">
                                 <video ref={videoRef} autoPlay playsInline className="w-full h-60 object-cover" />
                                 <canvas ref={canvasRef} className="hidden" />
                                 <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="w-44 h-44 border-4 border-white/80 rounded-2xl">
+                                    <div className="w-44 h-44 border-4 border-white/80 rounded-2xl overflow-hidden">
                                         <motion.div
                                             animate={{ y: [0, 160, 0] }}
                                             transition={{ duration: 2, repeat: Infinity }}
@@ -216,6 +311,14 @@ const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-sessi
                                         />
                                     </div>
                                 </div>
+                                {status === 'initializing' && (
+                                    <div className="absolute inset-0 bg-slate-900/70 flex items-center justify-center">
+                                        <div className="text-center text-white">
+                                            <Loader className="animate-spin mx-auto mb-2" size={32} />
+                                            <p className="text-sm">Starting camera...</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             <Button variant="outline" fullWidth onClick={() => { stopCamera(); setStatus('idle'); }}>
                                 Cancel
@@ -227,7 +330,7 @@ const QRScanner = ({ secretKey, onSuccess, onFailure, sessionId = 'default-sessi
                         </motion.div>
                     )}
 
-                    {/* ── OTP Tab ── */}
+                    {/* ── OTP Tab: Idle ── */}
                     {tab === 'otp' && status === 'idle' && (
                         <motion.div key="otp-idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                             <div className="bg-slate-50 rounded-xl p-5 text-center mb-5">
