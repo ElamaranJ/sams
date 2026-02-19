@@ -36,17 +36,6 @@ const MarkAttendance = () => {
     const [isDeviceLoaded, setIsDeviceLoaded] = useState(false);
     const [registeredDeviceHash, setRegisteredDeviceHash] = useState(null);
 
-    // ✅ FIX: We need the active sessionId to validate OTP
-    // This should come from the QR scan or from a session selection screen.
-    // For now we use a placeholder that gets filled when QR succeeds,
-    // but we also allow the student to enter a sessionId manually if using OTP-first flow.
-    // The secretKey MUST match what faculty used — in production, fetch from Firestore.
-    const qrSecretKey = import.meta.env?.VITE_QR_SECRET || 'your-secret-key-here';
-
-    // Active session id — populated after QR scan, or must be known in advance for OTP
-    // In a real app, faculty would share the session ID (or it's embedded in QR)
-    const [activeSessionId, setActiveSessionId] = useState('');
-
     const allowedSubnets = ['192.168.12.xxx', '10.0.5.xxx'];
 
     React.useEffect(() => {
@@ -103,13 +92,9 @@ const MarkAttendance = () => {
         setTimeout(() => setCurrentLayer(3), 1000);
     };
 
-    // Layer 3: QR/OTP Success
-    // ✅ FIX: This now receives validated data from QRScanner
-    // QRScanner already validates OTP before calling onSuccess, so we just accept it
+    // Layer 3: QR/OTP Success — QRScanner already wrote attendance to Firestore
     const handleQRSuccess = (data) => {
         setVerificationData(prev => ({ ...prev, qr: data }));
-        // Save the sessionId so attendance record can reference it
-        if (data.sessionId) setActiveSessionId(data.sessionId);
         setTimeout(() => setCurrentLayer(4), 1000);
     };
 
@@ -262,8 +247,6 @@ const MarkAttendance = () => {
 
                             {currentLayer === 3 && (
                                 <QRScanner
-                                    secretKey={qrSecretKey}
-                                    sessionId={activeSessionId}
                                     onSuccess={handleQRSuccess}
                                     onFailure={(err) => handleLayerFailure('QR', err)}
                                 />
