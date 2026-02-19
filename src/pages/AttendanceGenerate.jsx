@@ -125,19 +125,13 @@ const AttendanceGenerate = () => {
     });
 
     if (result.success) {
-      // Use the encryption utility — expiry matches the session duration
-      const secretKey = import.meta.env.VITE_QR_SECRET_KEY || 'demo-secret-key';
-      const sessionExpiresAt = Date.now() + qrDuration * 60 * 1000;
-      const encryptedData = generateQRPayload({
-        subjectId: selectedCourse.id,
-        facultyId: user.uid,
-        classroomId: 'classroom-default',
-        sessionId: result.sessionId,
-        expiresAt: sessionExpiresAt  // pass our own expiry so QR lasts full session duration
-      }, secretKey);
+      // Simple QR: just store the sessionId as plain JSON
+      // Short payload = simple QR code = reliable scanning
+      // Security is enforced server-side via Firestore (active session, expiry, duplicates)
+      const qrPayload = JSON.stringify({ sessionId: result.sessionId, type: 'attendance' });
 
       setOtp(newOTP);
-      setGeneratedQR(encryptedData.encrypted);
+      setGeneratedQR(qrPayload);
       setTimeRemaining(qrDuration * 60);
       startPollingAttendees(result.sessionId);
       fetchHistory();
