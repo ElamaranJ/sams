@@ -4,6 +4,32 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, User, GraduationCap, Building2, CheckCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
+const inputStyle = {
+  background: 'rgba(248,250,252,0.8)',
+  border: '1.5px solid #e2e8f0',
+};
+
+const InputField = ({ label, type = 'text', value, onChange, placeholder, icon: Icon, disabled, children }) => (
+  <div>
+    <label className="block text-sm font-semibold text-slate-700 mb-2">{label}</label>
+    <div className="relative">
+      {Icon && <Icon size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />}
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="w-full py-3 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 transition-all outline-none"
+        style={{ ...inputStyle, paddingLeft: Icon ? '2.75rem' : '1rem', paddingRight: children ? '3rem' : '1rem' }}
+        onFocus={e => e.target.style.borderColor = '#4f46e5'}
+        onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+      />
+      {children}
+    </div>
+  </div>
+);
+
 const Register = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -59,32 +85,6 @@ const Register = () => {
     { value: 'faculty', label: 'Faculty', color: '#7c3aed' },
     { value: 'admin', label: 'Admin', color: '#6d28d9' },
   ];
-
-  const inputStyle = {
-    background: 'rgba(248,250,252,0.8)',
-    border: '1.5px solid #e2e8f0',
-  };
-
-  const InputField = ({ label, type = 'text', value, onChange, placeholder, icon: Icon, disabled, children }) => (
-    <div>
-      <label className="block text-sm font-semibold text-slate-700 mb-2">{label}</label>
-      <div className="relative">
-        {Icon && <Icon size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />}
-        <input
-          type={type}
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-          disabled={disabled}
-          className="w-full py-3 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 transition-all outline-none"
-          style={{ ...inputStyle, paddingLeft: Icon ? '2.75rem' : '1rem', paddingRight: children ? '3rem' : '1rem' }}
-          onFocus={e => e.target.style.borderColor = '#4f46e5'}
-          onBlur={e => e.target.style.borderColor = '#e2e8f0'}
-        />
-        {children}
-      </div>
-    </div>
-  );
 
   if (success) return (
     <div className="min-h-screen flex items-center justify-center"

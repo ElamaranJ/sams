@@ -63,6 +63,12 @@ const FaceLivenessVerification = ({ onSuccess, onFailure }) => {
 
     useEffect(() => { return stopCamera; }, []);
 
+    // Auto-start liveness when component mounts (no button click needed)
+    useEffect(() => {
+        const timer = setTimeout(() => beginVerification(), 500);
+        return () => clearTimeout(timer);
+    }, []);
+
     // ── Camera helpers ──────────────────────────────────────────────────────────
     const stopCamera = () => {
         loopActiveRef.current = false;
